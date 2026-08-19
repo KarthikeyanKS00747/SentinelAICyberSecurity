@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="SentinelAI – Lightweight SIEM dashboard for log analysis and threat detection." />
+  <title>{% block title %}SentinelAI SIEM{% endblock %}</title>
+
+  <!-- Tailwind CSS CDN (v3 Play CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            sentinel: {
+              950: '#050b18',
+              900: '#0a1628',
+              800: '#0f2040',
+              700: '#132a54',
+              600: '#1a3a6e',
+              accent: '#3b82f6',
+              cyan:   '#06b6d4',
+              green:  '#10b981',
+              amber:  '#f59e0b',
+              red:    '#ef4444',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          boxShadow: {
+            glow: '0 0 20px rgba(59,130,246,0.25)',
+            'glow-red': '0 0 20px rgba(239,68,68,0.25)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- HTMX CDN -->
+  <script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2uQ8uDJg2j+S2rMENHLWYLi9kB5MBEQ4Qo" crossorigin="anonymous"></script>
+
+  <!-- ApexCharts CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.49.0/dist/apexcharts.min.js"></script>
+
+  <!-- Font Awesome CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <style>
+    body { background-color: #050b18; }
+
+    /* Sidebar link transitions */
+    .nav-link { transition: all 0.2s ease; }
+    .nav-link:hover { transform: translateX(4px); }
+    .nav-link.active {
+      background: linear-gradient(90deg, rgba(59,130,246,0.2), transparent);
+      border-left: 3px solid #3b82f6;
+    }
+
+    /* Glassmorphism cards */
+    .glass-card {
+      background: rgba(15,32,64,0.6);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(59,130,246,0.15);
+    }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0a1628; }
+    ::-webkit-scrollbar-thumb { background: #1a3a6e; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
+
+    /* HTMX loading indicator */
+    .htmx-indicator { opacity: 0; transition: opacity 0.2s ease; }
+    .htmx-request .htmx-indicator { opacity: 1; }
+    .htmx-request.htmx-indicator { opacity: 1; }
+
+    /* Animated gradient border on stat cards */
+    .stat-card {
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(6,182,212,0.04));
+      pointer-events: none;
+    }
+
+    /* Table row hover */
+    .alert-row { transition: background-color 0.15s ease; }
+    .alert-row:hover { background-color: rgba(59,130,246,0.06) !important; }
+
+    /* Pulse animation for critical badges */
+    @keyframes pulse-red {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+      50% { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+    }
+    .badge-critical { animation: pulse-red 2s infinite; }
+
+    /* Smooth fade-in for HTMX swapped content */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .htmx-added { animation: fadeIn 0.3s ease forwards; }
+  </style>
+
+  {% block head %}{% endblock %}
+</head>
+
+<body class="font-sans text-slate-200 min-h-screen flex" hx-boost="false">
+
+  <!-- ── SIDEBAR ─────────────────────────────────────────────────── -->
+  <aside id="sidebar"
+         class="fixed top-0 left-0 h-full w-64 z-50 flex flex-col
+                bg-sentinel-900 border-r border-blue-900/30 shadow-2xl">
+
+    <!-- Logo / Brand -->
+    <div class="flex items-center gap-3 px-6 py-5 border-b border-blue-900/30">
+      <div class="flex items-center justify-center w-9 h-9 rounded-lg
+                  bg-gradient-to-br from-blue-500 to-cyan-500 shadow-glow">
+        <i class="fa-solid fa-shield-halved text-white text-base"></i>
+      </div>
+      <div>
+        <span class="text-white font-bold text-lg tracking-wide">Sentinel</span><span class="text-blue-400 font-bold text-lg">AI</span>
+        <p class="text-slate-500 text-xs font-medium -mt-0.5">SIEM Platform</p>
+      </div>
+    </div>
+
+    <!-- Navigation Links -->
+    <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <p class="px-3 mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Main Menu</p>
+
+      <a href="/" id="nav-dashboard"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-gauge-high w-4 text-center text-blue-400"></i>
+        Dashboard
+      </a>
+
+      <a href="/alerts" id="nav-alerts"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-triangle-exclamation w-4 text-center text-amber-400"></i>
+        Alerts
+        {% if open_alerts_count is defined and open_alerts_count > 0 %}
+        <span class="ml-auto bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
+          {{ open_alerts_count }}
+        </span>
+        {% endif %}
+      </a>
+
+      <a href="/upload" id="nav-upload"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-cloud-arrow-up w-4 text-center text-green-400"></i>
+        Upload Logs
+      </a>
+
+      <a href="/threat-intel" id="nav-threat"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-crosshairs w-4 text-center text-red-400"></i>
+        Threat Intel
+      </a>
+
+      <div class="pt-4 mt-4 border-t border-blue-900/30">
+        <p class="px-3 mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">System</p>
+        <a href="/api/docs" target="_blank"
+           class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+          <i class="fa-solid fa-code w-4 text-center text-purple-400"></i>
+          API Docs
+        </a>
+      </div>
+    </nav>
+
+    <!-- System Status Footer -->
+    <div class="px-4 py-4 border-t border-blue-900/30">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+        <span class="text-xs text-slate-400">System Online</span>
+      </div>
+      <p class="text-xs text-slate-600 mt-1 font-mono">SentinelAI v0.1.0</p>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT AREA ─────────────────────────────────────── -->
+  <div class="flex-1 ml-64 flex flex-col min-h-screen">
+
+    <!-- Top Bar -->
+    <header class="sticky top-0 z-40 bg-sentinel-950/80 backdrop-blur-md border-b border-blue-900/30 px-6 py-3">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-base font-semibold text-white">{% block page_title %}Dashboard{% endblock %}</h1>
+          <p class="text-xs text-slate-500">{% block page_subtitle %}Real-time security monitoring{% endblock %}</p>
+        </div>
+        <div class="flex items-center gap-4">
+          <!-- HTMX global loading spinner -->
+          <div id="global-spinner" class="htmx-indicator">
+            <i class="fa-solid fa-circle-notch fa-spin text-blue-400 text-sm"></i>
+          </div>
+          <div class="flex items-center gap-2 bg-sentinel-800/50 border border-blue-900/30 rounded-lg px-3 py-1.5">
+            <i class="fa-solid fa-database text-blue-400 text-xs"></i>
+            <span class="text-xs text-slate-400 font-mono">SQLite</span>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Page Content -->
+    <main class="flex-1 p-6">
+      {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="text-center py-4 text-xs text-slate-600 border-t border-blue-900/20">
+      SentinelAI &mdash; Lightweight SIEM &bull; Academic Prototype &bull; Phase 4
+    </footer>
+  </div>
+
+  <!-- ── ACTIVE NAV SCRIPT ─────────────────────────────────────── -->
+  <script>
+    (function () {
+      const path = window.location.pathname;
+      const map = {
+        '/':            'nav-dashboard',
+        '/alerts':      'nav-alerts',
+        '/upload':      'nav-upload',
+        '/threat-intel':'nav-threat',
+      };
+      const id = map[path] || (path.startsWith('/alerts') ? 'nav-alerts' : null);
+      if (id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('active', 'text-white');
+      }
+      // Wire HTMX global indicator
+      document.body.addEventListener('htmx:beforeRequest', () => {
+        document.getElementById('global-spinner')?.classList.add('htmx-request');
+      });
+      document.body.addEventListener('htmx:afterRequest', () => {
+        document.getElementById('global-spinner')?.classList.remove('htmx-request');
+      });
+    })();
+  </script>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Upload Logs – SentinelAI{% endblock %}
+{% block page_title %}Upload Log File{% endblock %}
+{% block page_subtitle %}Submit log files for automated parsing and threat detection{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto">
+  <div class="glass-card rounded-xl p-8">
+
+    <div class="mb-6 flex items-center gap-3">
+      <div class="w-12 h-12 rounded-xl bg-green-500/15 flex items-center justify-center">
+        <i class="fa-solid fa-cloud-arrow-up text-green-400 text-xl"></i>
+      </div>
+      <div>
+        <h2 class="text-white font-semibold text-lg">Log File Upload</h2>
+        <p class="text-slate-400 text-sm">Accepted formats: .log, .txt, .csv (max 10 MB)</p>
+      </div>
+    </div>
+
+    <!-- Upload Form -->
+    <form id="upload-form" action="/api/logs/upload" method="post" enctype="multipart/form-data"
+          hx-post="/api/logs/upload"
+          hx-encoding="multipart/form-data"
+          hx-target="#upload-result"
+          hx-swap="innerHTML"
+          hx-indicator="#upload-spinner">
+
+      <!-- Drop zone -->
+      <label for="file-input"
+             class="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed
+                    border-blue-900/50 rounded-xl cursor-pointer
+                    hover:border-blue-500/60 hover:bg-blue-500/5 transition-all duration-200 mb-6"
+             id="drop-zone">
+        <i class="fa-solid fa-file-arrow-up text-4xl text-slate-600 mb-3"></i>
+        <p class="text-sm font-medium text-slate-400">Drag & drop a log file here</p>
+        <p class="text-xs text-slate-600 mt-1">or <span class="text-blue-400 underline">click to browse</span></p>
+        <p id="file-name-label" class="text-xs text-green-400 mt-2 font-mono hidden"></p>
+      </label>
+      <input id="file-input" type="file" name="file" accept=".log,.txt,.csv"
+             class="hidden" onchange="handleFileSelect(this)" />
+
+      <button type="submit"
+              class="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg
+                     bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500
+                     text-white font-semibold text-sm transition-all duration-200 shadow-glow">
+        <i class="fa-solid fa-rocket"></i>
+        Analyze Log File
+        <span id="upload-spinner" class="htmx-indicator ml-1">
+          <i class="fa-solid fa-circle-notch fa-spin"></i>
+        </span>
+      </button>
+    </form>
+
+    <!-- Result area -->
+    <div id="upload-result" class="mt-5"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function handleFileSelect(input) {
+    const label = document.getElementById('file-name-label');
+    if (input.files.length > 0) {
+      label.textContent = '📎 ' + input.files[0].name;
+      label.classList.remove('hidden');
+      document.getElementById('drop-zone').classList.add('border-blue-500/60', 'bg-blue-500/5');
+    }
+  }
+</script>
+{% endblock %}

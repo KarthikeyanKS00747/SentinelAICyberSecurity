@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Alerts – SentinelAI{% endblock %}
+{% block page_title %}Alerts Management{% endblock %}
+{% block page_subtitle %}Detect, triage, and resolve security threats{% endblock %}
+
+{% block content %}
+
+<!-- ── FILTER / SEARCH BAR ─────────────────────────────────────── -->
+<div class="glass-card rounded-xl p-4 mb-6 flex flex-wrap gap-4 items-center">
+
+  <!-- Search -->
+  <div class="flex-1 min-w-[200px] relative">
+    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
+    <input
+      id="search-input"
+      type="text"
+      name="search"
+      value="{{ search or '' }}"
+      placeholder="Search threat name, IP, description…"
+      class="w-full bg-sentinel-800/60 border border-blue-900/30 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-200
+             placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+      hx-get="/alerts"
+      hx-trigger="keyup changed delay:450ms"
+      hx-target="#alerts-table-wrapper"
+      hx-swap="innerHTML"
+      hx-include="[name='severity_filter'],[name='status_filter']"
+      hx-indicator="#search-spinner"
+    />
+    <div id="search-spinner" class="htmx-indicator absolute right-3 top-1/2 -translate-y-1/2">
+      <i class="fa-solid fa-circle-notch fa-spin text-blue-400 text-xs"></i>
+    </div>
+  </div>
+
+  <!-- Severity Filter -->
+  <select
+    name="severity_filter"
+    class="bg-sentinel-800/60 border border-blue-900/30 rounded-lg px-3 py-2 text-sm text-slate-300
+           focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+    hx-get="/alerts"
+    hx-trigger="change"
+    hx-target="#alerts-table-wrapper"
+    hx-swap="innerHTML"
+    hx-include="#search-input,[name='status_filter']"
+    hx-indicator="#search-spinner"
+  >
+    <option value="">All Severities</option>
+    <option value="critical" {% if severity_filter == 'critical' %}selected{% endif %}>Critical</option>
+    <option value="high"     {% if severity_filter == 'high'     %}selected{% endif %}>High</option>
+    <option value="medium"   {% if severity_filter == 'medium'   %}selected{% endif %}>Medium</option>
+    <option value="low"      {% if severity_filter == 'low'      %}selected{% endif %}>Low</option>
+  </select>
+
+  <!-- Status Filter -->
+  <select
+    name="status_filter"
+    class="bg-sentinel-800/60 border border-blue-900/30 rounded-lg px-3 py-2 text-sm text-slate-300
+           focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+    hx-get="/alerts"
+    hx-trigger="change"
+    hx-target="#alerts-table-wrapper"
+    hx-swap="innerHTML"
+    hx-include="#search-input,[name='severity_filter']"
+    hx-indicator="#search-spinner"
+  >
+    <option value="">All Statuses</option>
+    <option value="open"          {% if status_filter == 'open'          %}selected{% endif %}>Open</option>
+    <option value="investigating" {% if status_filter == 'investigating' %}selected{% endif %}>Investigating</option>
+    <option value="resolved"      {% if status_filter == 'resolved'      %}selected{% endif %}>Resolved</option>
+  </select>
+
+  <!-- Result count badge -->
+  <span class="ml-auto text-xs text-slate-500 font-mono whitespace-nowrap">
+    {{ alerts | length }} result{% if alerts | length != 1 %}s{% endif %}
+  </span>
+</div>
+
+<!-- ── ALERTS TABLE ────────────────────────────────────────────── -->
+<div id="alerts-table-wrapper">
+  {% include "partials/alerts_table.html" %}
+</div>
+
+{% endblock %}

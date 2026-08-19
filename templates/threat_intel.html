@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Threat Intel – SentinelAI{% endblock %}
+{% block page_title %}Threat Intelligence{% endblock %}
+{% block page_subtitle %}Known malicious indicators from the local threat feed{% endblock %}
+
+{% block content %}
+<div class="glass-card rounded-xl overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-blue-900/40 bg-sentinel-900/60">
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Indicator</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Type</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Category</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Risk Level</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Source</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Added</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-blue-900/20">
+        {% for item in threat_intel %}
+        {% set rl = item.risk_level.value %}
+        <tr class="alert-row">
+          <td class="px-4 py-3 font-mono text-xs text-cyan-300">{{ item.indicator }}</td>
+          <td class="px-4 py-3 text-xs text-slate-400 uppercase">{{ item.indicator_type }}</td>
+          <td class="px-4 py-3 text-sm text-slate-300">{{ item.threat_category }}</td>
+          <td class="px-4 py-3">
+            {% if rl == 'critical' %}
+              <span class="badge-critical px-2.5 py-1 rounded-full text-xs font-bold bg-red-500/15 text-red-400 border border-red-500/40">CRITICAL</span>
+            {% elif rl == 'high' %}
+              <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-orange-500/15 text-orange-400 border border-orange-500/40">HIGH</span>
+            {% elif rl == 'medium' %}
+              <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/40">MEDIUM</span>
+            {% else %}
+              <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-slate-500/15 text-slate-400 border border-slate-500/40">LOW</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-500">{{ item.source or '—' }}</td>
+          <td class="px-4 py-3 text-xs text-slate-400 font-mono">
+            {{ item.added_at.strftime('%Y-%m-%d') if item.added_at else '—' }}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center py-16 text-slate-500">
+            <i class="fa-solid fa-crosshairs text-4xl opacity-15 mb-3 block"></i>
+            No threat intelligence entries found.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

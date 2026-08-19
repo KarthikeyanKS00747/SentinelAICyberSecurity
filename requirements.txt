@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+aiosqlite
+pydantic-settings
+httpx
+python-magic
+jinja2
+python-multipart
