@@ -60,13 +60,116 @@
 
 {% block scripts %}
 <script>
+  const dropZone  = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+
   function handleFileSelect(input) {
     const label = document.getElementById('file-name-label');
     if (input.files.length > 0) {
       label.textContent = '📎 ' + input.files[0].name;
       label.classList.remove('hidden');
-      document.getElementById('drop-zone').classList.add('border-blue-500/60', 'bg-blue-500/5');
+      dropZone.classList.add('border-blue-500/60', 'bg-blue-500/5');
     }
   }
+
+  // -- DRAG & DROP ------------------------------------------------
+  ['dragenter', 'dragover'].forEach(function (name) {
+    dropZone.addEventListener(name, function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.add('border-blue-500/60', 'bg-blue-500/5');
+    });
+  });
+
+  dropZone.addEventListener('dragleave', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dropZone.contains(e.relatedTarget) && fileInput.files.length === 0) {
+      dropZone.classList.remove('border-blue-500/60', 'bg-blue-500/5');
+    }
+  });
+
+  dropZone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dropped = e.dataTransfer && e.dataTransfer.files;
+    if (dropped && dropped.length > 0) {
+      const transfer = new DataTransfer();
+      transfer.items.add(dropped[0]);
+      fileInput.files = transfer.files;
+      handleFileSelect(fileInput);
+    }
+  });
+
+  // -- RESULT RENDERING -------------------------------------------
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function renderUploadResult(statusCode, responseText) {
+    let payload = null;
+    try { payload = JSON.parse(responseText); } catch (err) { payload = null; }
+
+    if (statusCode >= 200 && statusCode < 300 && payload) {
+      const alertsGenerated = payload.alerts_generated || 0;
+      const alertTone = alertsGenerated > 0 ? 'text-amber-300' : 'text-slate-300';
+      return `
+        <div class="htmx-added rounded-lg border border-green-500/30 bg-green-500/5 p-4">
+          <div class="flex items-start gap-3">
+            <div class="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center flex-shrink-0">
+              <i class="fa-solid fa-circle-check text-green-400 text-sm"></i>
+            </div>
+            <div class="flex-1">
+              <p class="text-sm font-semibold text-green-300">Log file analyzed</p>
+              <p class="text-xs text-slate-400 mt-0.5 font-mono">${escapeHtml(payload.filename)}</p>
+              <div class="mt-3 grid grid-cols-3 gap-3 text-center">
+                <div class="rounded-lg bg-sentinel-800/60 py-2">
+                  <p class="text-lg font-bold text-white">${escapeHtml(payload.entries_parsed)}</p>
+                  <p class="text-[10px] uppercase tracking-wider text-slate-500">Entries</p>
+                </div>
+                <div class="rounded-lg bg-sentinel-800/60 py-2">
+                  <p class="text-lg font-bold ${alertTone}">${escapeHtml(alertsGenerated)}</p>
+                  <p class="text-[10px] uppercase tracking-wider text-slate-500">Alerts</p>
+                </div>
+                <div class="rounded-lg bg-sentinel-800/60 py-2">
+                  <p class="text-lg font-bold text-white uppercase">${escapeHtml(payload.status)}</p>
+                  <p class="text-[10px] uppercase tracking-wider text-slate-500">Status</p>
+                </div>
+              </div>
+              <div class="mt-3 flex items-center gap-3 text-xs">
+                <a href="/alerts" class="text-blue-400 hover:text-blue-300 font-medium">
+                  View alerts <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                </a>
+                <a href="/" class="text-slate-500 hover:text-slate-300">Dashboard</a>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    const detail = (payload && payload.detail) ? payload.detail : 'Upload failed. Please try again.';
+    return `
+      <div class="htmx-added rounded-lg border border-red-500/30 bg-red-500/5 p-4">
+        <div class="flex items-start gap-3">
+          <div class="w-8 h-8 rounded-lg bg-red-500/20 flex items-center justify-center flex-shrink-0">
+            <i class="fa-solid fa-triangle-exclamation text-red-400 text-sm"></i>
+          </div>
+          <div class="flex-1">
+            <p class="text-sm font-semibold text-red-300">Upload rejected</p>
+            <p class="text-xs text-slate-400 mt-1 leading-relaxed">${escapeHtml(detail)}</p>
+            <p class="text-[10px] text-slate-600 mt-2 font-mono">HTTP ${escapeHtml(statusCode)}</p>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // The endpoint answers with JSON; swap in rendered HTML instead of raw text.
+  document.getElementById('upload-form').addEventListener('htmx:beforeSwap', function (evt) {
+    evt.detail.shouldSwap = true;
+    evt.detail.isError = false;
+    evt.detail.serverResponse = renderUploadResult(evt.detail.xhr.status, evt.detail.xhr.responseText);
+  });
 </script>
 {% endblock %}

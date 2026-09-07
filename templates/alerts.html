@@ -70,7 +70,7 @@
   </select>
 
   <!-- Result count badge -->
-  <span class="ml-auto text-xs text-slate-500 font-mono whitespace-nowrap">
+  <span id="alerts-result-count" class="ml-auto text-xs text-slate-500 font-mono whitespace-nowrap">
     {{ alerts | length }} result{% if alerts | length != 1 %}s{% endif %}
   </span>
 </div>

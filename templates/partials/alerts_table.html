@@ -1,3 +1,8 @@
+{% if is_partial %}
+<span id="alerts-result-count" hx-swap-oob="true" class="ml-auto text-xs text-slate-500 font-mono whitespace-nowrap">
+  {{ alerts | length }} result{% if alerts | length != 1 %}s{% endif %}
+</span>
+{% endif %}
 {% if alerts %}
 <div class="glass-card rounded-xl overflow-hidden">
   <div class="overflow-x-auto">
