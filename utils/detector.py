@@ -43,7 +43,9 @@ async def run_threat_detection(db: AsyncSession, log_file_id: int) -> int:
                 threat_name="Malicious IP Activity",
                 severity=SeverityLevel.CRITICAL,
                 risk_score=95,
-                source_ip=", ".join(malicious_ips),
+                # source_ip is String(45): store one address here and keep the
+                # full list in the description so the column cannot overflow.
+                source_ip=malicious_ips[0],
                 description=f"Activity detected from known malicious IPs: {', '.join(malicious_ips)}",
                 status=AlertStatus.OPEN,
             )
@@ -71,8 +73,10 @@ async def run_threat_detection(db: AsyncSession, log_file_id: int) -> int:
             )
 
         distinct_ports = {entry.destination_port for entry in source_entries if entry.destination_port is not None}
-        activity_count = len(distinct_ports) if distinct_ports else len(source_entries)
-        if (distinct_ports and len(distinct_ports) >= 10) or (not distinct_ports and len(source_entries) >= 50):
+        is_port_scan = len(distinct_ports) >= 10
+        is_high_volume = len(source_entries) >= 50
+        activity_count = len(distinct_ports) if is_port_scan else len(source_entries)
+        if is_port_scan or is_high_volume:
             key = f"PORT_SCAN_{source_ip}"
             if key not in processed_threats:
                 processed_threats.add(key)

@@ -15,7 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Alert, AlertStatus
+from models import Alert, AlertStatus, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +82,12 @@ async def alerts_page(
         severity_filter=severity_filter or "",
         status_filter=status_filter or "",
         open_alerts_count=open_alerts_count,
+        is_partial=False,
     )
 
     # HTMX partial swap – return only the table fragment
     if request.headers.get("HX-Request"):
+        ctx["is_partial"] = True
         return _tpl("partials/alerts_table.html", request, **ctx)
 
     return _tpl("alerts.html", request, **ctx)
@@ -118,6 +120,7 @@ async def update_alert_status(
         )
 
     alert.status = mapped
+    alert.resolved_at = utc_now() if mapped is AlertStatus.RESOLVED else None
     await db.commit()
     await db.refresh(alert)
 

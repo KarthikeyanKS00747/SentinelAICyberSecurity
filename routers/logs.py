@@ -19,18 +19,18 @@ logger = logging.getLogger(__name__)
 async def upload_log(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)) -> dict[str, object]:
     """Validate, securely save, parse, and record an uploaded log file."""
     saved_upload = await validate_and_save_upload(file)
+    log_file = LogFile(
+        filename=saved_upload.original_filename,
+        file_path=str(saved_upload.storage_path),
+        mime_type=saved_upload.mime_type,
+        file_size_bytes=saved_upload.size_bytes,
+        log_type="csv" if saved_upload.original_filename.lower().endswith(".csv") else "text",
+        status=LogFileStatus.PARSING,
+    )
     try:
-        records = parse_log(saved_upload.content, saved_upload.original_filename)
-        log_file = LogFile(
-            filename=saved_upload.original_filename,
-            file_path=str(saved_upload.storage_path),
-            mime_type=saved_upload.mime_type,
-            file_size_bytes=saved_upload.size_bytes,
-            log_type="csv" if saved_upload.original_filename.lower().endswith(".csv") else "text",
-            status=LogFileStatus.ANALYZED,
-        )
         db.add(log_file)
         await db.flush()
+        records = parse_log(saved_upload.content, saved_upload.original_filename)
         db.add_all(
             ParsedLogEntry(
                 log_file_id=log_file.id,
@@ -58,9 +58,11 @@ async def upload_log(file: UploadFile = File(...), db: AsyncSession = Depends(ge
     try:
         alerts_generated = await run_threat_detection(db, log_file.id)
         log_file.alerts_count = alerts_generated
+        log_file.status = LogFileStatus.ANALYZED
         await db.commit()
     except Exception:
         logger.exception("Threat detection failed for log file %s", log_file.id)
+        await db.rollback()
         log_file.status = LogFileStatus.FAILED
         await db.commit()
 
