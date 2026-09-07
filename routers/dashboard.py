@@ -15,7 +15,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Alert, AlertStatus, LogFile, ParsedLogEntry, SeverityLevel, ThreatIntel
+from models import Alert, AlertStatus, LogFile, ParsedLogEntry, SeverityLevel, ThreatIntel, User
+from routers.auth import get_current_user
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,11 @@ def _tpl(name: str, request: Request, **ctx):
 
 
 @router.get("/", response_class=HTMLResponse)
-async def dashboard(request: Request, db: AsyncSession = Depends(get_db)) -> HTMLResponse:
+async def dashboard(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> HTMLResponse:
     """Render the main dashboard with real aggregated statistics."""
 
     # ── Aggregate queries ──────────────────────────────────────────
@@ -105,19 +110,26 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)) -> HTM
         "latest_log_file_id": latest_log_file_id,
     }
 
-    return _tpl("dashboard.html", request, stats=stats, open_alerts_count=active_alerts)
+    return _tpl("dashboard.html", request, stats=stats, open_alerts_count=active_alerts, current_user=current_user)
 
 
 @router.get("/upload", response_class=HTMLResponse)
-async def upload_page(request: Request) -> HTMLResponse:
+async def upload_page(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+) -> HTMLResponse:
     """Render the log-upload UI page."""
-    return _tpl("upload.html", request)
+    return _tpl("upload.html", request, current_user=current_user)
 
 
 @router.get("/threat-intel", response_class=HTMLResponse)
-async def threat_intel_page(request: Request, db: AsyncSession = Depends(get_db)) -> HTMLResponse:
+async def threat_intel_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> HTMLResponse:
     """Render the Threat Intelligence page."""
     threat_intel = (
         await db.execute(select(ThreatIntel).order_by(ThreatIntel.added_at.desc()))
     ).scalars().all()
-    return _tpl("threat_intel.html", request, threat_intel=threat_intel)
+    return _tpl("threat_intel.html", request, threat_intel=threat_intel, current_user=current_user)

@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.sessions import SessionMiddleware
 from sqlalchemy import select, text
 from sqlalchemy.exc import OperationalError
 
@@ -15,6 +16,11 @@ from config import settings
 from database import AsyncSessionLocal, Base, engine
 from models import SeverityLevel, ThreatIntel
 from routers.alerts import router as alerts_router
+from routers.auth import (
+    AuthenticationRequired,
+    authentication_required_handler,
+    router as auth_router,
+)
 from routers.dashboard import router as dashboard_router
 from routers.health import router as health_router
 from routers.logs import router as logs_router
@@ -64,12 +70,23 @@ app.add_middleware(
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "Authorization"],
+    allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
+)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=settings.SECRET_KEY,
+    session_cookie="sentinelai_session",
+    max_age=8 * 60 * 60,
+    same_site="lax",
+    https_only=False,  # local prototype is served over plain HTTP
 )
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["localhost", "127.0.0.1", "testserver"],
 )
+
+
+app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
 
 
 @app.exception_handler(Exception)
@@ -81,6 +98,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 # Phase 4: UI routers registered before the API routers so that
 # GET / renders the dashboard instead of the health-check JSON.
+app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(alerts_router)
 # API routers

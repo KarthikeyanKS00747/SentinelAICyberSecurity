@@ -10,7 +10,8 @@ from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Alert, LogFile, ParsedLogEntry, SeverityLevel, utc_now
+from models import Alert, LogFile, ParsedLogEntry, SeverityLevel, User, utc_now
+from routers.auth import get_current_user
 from utils.pdf_report import ReportAlert, ReportData, build_report_pdf, report_filename
 
 router = APIRouter(prefix="/api/reports", tags=["Reports"])
@@ -27,7 +28,11 @@ _SEVERITY_RANK = case(
 
 
 @router.get("/{log_file_id}/pdf")
-async def download_report(log_file_id: int, db: AsyncSession = Depends(get_db)) -> StreamingResponse:
+async def download_report(
+    log_file_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
     """Render one log file's alerts as a downloadable PDF security report."""
     log_file = await db.get(LogFile, log_file_id)
     if log_file is None:

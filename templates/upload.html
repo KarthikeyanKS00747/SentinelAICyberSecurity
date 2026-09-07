@@ -26,6 +26,9 @@
           hx-swap="innerHTML"
           hx-indicator="#upload-spinner">
 
+      <!-- Sent as a field so the token survives a plain (non-HTMX) form POST too. -->
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
       <!-- Drop zone -->
       <label for="file-input"
              class="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed
@@ -166,7 +169,11 @@
   }
 
   // The endpoint answers with JSON; swap in rendered HTML instead of raw text.
-  document.getElementById('upload-form').addEventListener('htmx:beforeSwap', function (evt) {
+  // htmx fires htmx:beforeSwap on the swap TARGET (#upload-result), not on the
+  // form, so listen on body and match the target.
+  document.body.addEventListener('htmx:beforeSwap', function (evt) {
+    const target = evt.detail && evt.detail.target;
+    if (!target || target.id !== 'upload-result') return;
     evt.detail.shouldSwap = true;
     evt.detail.isError = false;
     evt.detail.serverResponse = renderUploadResult(evt.detail.xhr.status, evt.detail.xhr.responseText);

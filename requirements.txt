@@ -8,3 +8,6 @@ python-magic
 jinja2
 python-multipart
 reportlab
+passlib[bcrypt]
+bcrypt<4.1
+itsdangerous

@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, File, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import LogFile, LogFileStatus, ParsedLogEntry
+from models import LogFile, LogFileStatus, ParsedLogEntry, User
+from routers.auth import get_current_user, require_csrf
 from utils.detector import run_threat_detection
 from utils.log_parser import parse_log
 from utils.upload_handler import delete_saved_upload, validate_and_save_upload
@@ -16,7 +17,12 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
-async def upload_log(file: UploadFile = File(...), db: AsyncSession = Depends(get_db)) -> dict[str, object]:
+async def upload_log(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _csrf: None = Depends(require_csrf),
+) -> dict[str, object]:
     """Validate, securely save, parse, and record an uploaded log file."""
     saved_upload = await validate_and_save_upload(file)
     log_file = LogFile(
@@ -26,6 +32,7 @@ async def upload_log(file: UploadFile = File(...), db: AsyncSession = Depends(ge
         file_size_bytes=saved_upload.size_bytes,
         log_type="csv" if saved_upload.original_filename.lower().endswith(".csv") else "text",
         status=LogFileStatus.PARSING,
+        owner_id=current_user.id,
     )
     try:
         db.add(log_file)
