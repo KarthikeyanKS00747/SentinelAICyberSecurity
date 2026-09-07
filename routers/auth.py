@@ -12,7 +12,7 @@ endpoint depends on) and ``require_csrf`` for state-changing POST routes.
 import logging
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,7 @@ router = APIRouter(tags=["Auth"])
 templates = Jinja2Templates(directory="templates")
 
 LOGIN_PATH = "/login"
+API_PREFIX = "/api/"
 SESSION_USER_KEY = "user_id"
 
 
@@ -53,7 +54,11 @@ class AuthenticationRequired(Exception):
 
 
 async def authentication_required_handler(request: Request, exc: AuthenticationRequired) -> Response:
-    """Send the browser to the login page instead of returning a bare 401."""
+    """Turn a missing session into the right answer for the caller.
+
+    htmx gets 204 + HX-Redirect, non-htmx /api/ callers get a JSON 401, and
+    a plain browser navigation gets a 303 to the login page.
+    """
     target = LOGIN_PATH
     if exc.next_url and _is_safe_next(exc.next_url) and exc.next_url != LOGIN_PATH:
         target = f"{LOGIN_PATH}?next={exc.next_url}"
@@ -61,6 +66,14 @@ async def authentication_required_handler(request: Request, exc: AuthenticationR
         # htmx will not follow a redirect usefully inside a partial swap;
         # HX-Redirect makes the browser navigate to the login page instead.
         return Response(status_code=status.HTTP_204_NO_CONTENT, headers={"HX-Redirect": target})
+    if request.url.path.startswith(API_PREFIX):
+        # fetch/curl callers follow a 303 into the login page's HTML and read it
+        # as success; a JSON 401 lets them see the failure. Checked after the
+        # htmx branch so HTMX calls to /api/... still get HX-Redirect.
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "Authentication required."},
+        )
     return RedirectResponse(target, status_code=status.HTTP_303_SEE_OTHER)
 
 
