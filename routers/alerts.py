@@ -3,19 +3,27 @@
 Provides:
   GET  /alerts                     – Filtered/searched alerts list (full page or HTMX partial).
   POST /api/alerts/{id}/status     – Update alert status; returns refreshed HTML row for HTMX swap.
-  POST /api/alerts/{id}/explain    – Phase 5 placeholder; returns a styled HTML snippet.
+  POST /api/alerts/{id}/explain    – Local-Ollama threat explanation (cached on the Alert row).
 """
 
 import logging
 
+import httpx
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import settings
 from database import get_db
 from models import Alert, AlertStatus, utc_now
+from utils.ai_explain import (
+    GENERATION_TIMEOUT_SECONDS,
+    OLLAMA_GENERATE_URL,
+    build_explanation_prompt,
+    parse_explanation,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +137,7 @@ async def update_alert_status(
     return _tpl("partials/alert_row.html", request, alert=alert)
 
 
-# ── POST /api/alerts/{alert_id}/explain ───────────────────────────
+# ── POST /api/alerts/{alert_id}/explain ─────────────────────────
 @router.post("/api/alerts/{alert_id}/explain", response_class=HTMLResponse)
 async def explain_alert(
     alert_id: int,
@@ -137,8 +145,11 @@ async def explain_alert(
     db: AsyncSession = Depends(get_db),
 ) -> HTMLResponse:
     """
-    Phase 5 placeholder – returns a styled HTML snippet.
-    Local LLM explanations will be generated via Ollama in Phase 5.
+    Ask the local Ollama model to explain one alert and cache the reply.
+
+    A stored explanation is re-rendered without contacting Ollama. Generation
+    failures render a styled fragment and persist nothing, so the next click
+    retries.
     """
     alert: Alert | None = await db.get(Alert, alert_id)
     if alert is None:
@@ -147,30 +158,52 @@ async def explain_alert(
             status_code=404,
         )
 
-    snippet = f"""
-    <div class="htmx-added my-2 mx-1 p-4 rounded-lg border border-purple-500/30
-                bg-gradient-to-r from-purple-900/20 to-slate-900/20 backdrop-blur-sm">
-      <div class="flex items-start gap-3">
-        <div class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-          <i class="fa-solid fa-robot text-purple-400 text-sm"></i>
-        </div>
-        <div class="flex-1">
-          <p class="text-sm font-semibold text-purple-300 mb-1">
-            AI Threat Explanation &mdash; Phase 5 Preview
-          </p>
-          <p class="text-xs text-slate-400 leading-relaxed">
-            Local LLM explanation will be generated here in <strong class="text-purple-300">Phase 5</strong>
-            using Ollama (<code class="text-cyan-300 bg-slate-800/50 px-1 rounded">llama3</code>).
-            The model will analyse alert&nbsp;<strong class="text-white">#{alert_id}</strong>
-            (<em>{alert.threat_name}</em>) and provide a human-readable threat summary,
-            recommended remediation steps, and MITRE&nbsp;ATT&amp;CK mapping.
-          </p>
-          <div class="mt-3 flex items-center gap-2 text-xs text-slate-500">
-            <i class="fa-solid fa-circle-info text-purple-500/60"></i>
-            Awaiting Phase 5 implementation &mdash; Ollama integration pending.
-          </div>
-        </div>
-      </div>
-    </div>
-    """
-    return HTMLResponse(content=snippet)
+    if alert.ai_explanation:
+        logger.info("Serving cached AI explanation for alert #%d", alert_id)
+        return _tpl(
+            "partials/alert_explanation.html",
+            request,
+            alert=alert,
+            explanation=parse_explanation(alert.ai_explanation),
+            model=settings.OLLAMA_MODEL,
+            cached=True,
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=GENERATION_TIMEOUT_SECONDS) as client:
+            response = await client.post(
+                OLLAMA_GENERATE_URL,
+                json={
+                    "model": settings.OLLAMA_MODEL,
+                    "prompt": build_explanation_prompt(alert),
+                    "stream": False,
+                },
+            )
+            response.raise_for_status()
+            payload = response.json()
+        generated = str(payload.get("response", "")).strip()
+        if not generated:
+            raise ValueError("Ollama returned an empty response")
+    except (httpx.HTTPError, ValueError) as exc:
+        # Nothing is written to the alert, so the button stays retryable.
+        logger.exception("AI explanation failed for alert %s", alert_id, exc_info=exc)
+        return _tpl(
+            "partials/alert_explanation_error.html",
+            request,
+            alert=alert,
+            model=settings.OLLAMA_MODEL,
+            timeout=int(GENERATION_TIMEOUT_SECONDS),
+        )
+
+    alert.ai_explanation = generated
+    await db.commit()
+    logger.info("Stored AI explanation for alert #%d (%d chars)", alert_id, len(generated))
+
+    return _tpl(
+        "partials/alert_explanation.html",
+        request,
+        alert=alert,
+        explanation=parse_explanation(generated),
+        model=settings.OLLAMA_MODEL,
+        cached=False,
+    )
