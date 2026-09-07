@@ -18,6 +18,7 @@ from routers.alerts import router as alerts_router
 from routers.dashboard import router as dashboard_router
 from routers.health import router as health_router
 from routers.logs import router as logs_router
+from routers.reports import router as reports_router
 
 logger = logging.getLogger(__name__)
 
@@ -84,4 +85,5 @@ app.include_router(dashboard_router)
 app.include_router(alerts_router)
 # API routers
 app.include_router(logs_router)
+app.include_router(reports_router)
 app.include_router(health_router)

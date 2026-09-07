@@ -73,6 +73,18 @@
   <span id="alerts-result-count" class="ml-auto text-xs text-slate-500 font-mono whitespace-nowrap">
     {{ alerts | length }} result{% if alerts | length != 1 %}s{% endif %}
   </span>
+
+  <!-- PDF report for the log file behind the most recent alert -->
+  {% if alerts %}
+  <a href="/api/reports/{{ alerts[0].log_file_id }}/pdf"
+     title="Download the PDF security report for this log file"
+     class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                bg-blue-500/15 text-blue-400 border border-blue-500/30
+                hover:bg-blue-500/25 hover:border-blue-400/50 transition-all duration-200">
+    <i class="fa-solid fa-file-pdf text-xs"></i>
+    Download PDF
+  </a>
+  {% endif %}
 </div>
 
 <!-- ── ALERTS TABLE ────────────────────────────────────────────── -->

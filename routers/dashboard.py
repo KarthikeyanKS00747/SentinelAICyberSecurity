@@ -83,6 +83,9 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)) -> HTM
         for date, count in sorted(daily_counts.items())
     ]
 
+    # Newest log file - target for the PDF report download button
+    latest_log_file_id = await db.scalar(select(LogFile.id).order_by(LogFile.id.desc()).limit(1))
+
     # Recent alerts (last 10)
     recent_alerts = (
         await db.execute(
@@ -99,6 +102,7 @@ async def dashboard(request: Request, db: AsyncSession = Depends(get_db)) -> HTM
         "security_score":    security_score,
         "alerts_over_time":  alerts_over_time,
         "recent_alerts":     recent_alerts,
+        "latest_log_file_id": latest_log_file_id,
     }
 
     return _tpl("dashboard.html", request, stats=stats, open_alerts_count=active_alerts)
