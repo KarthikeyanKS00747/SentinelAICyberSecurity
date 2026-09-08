@@ -27,6 +27,7 @@ from routers.dashboard import router as dashboard_router
 from routers.geo import router as geo_router
 from routers.health import router as health_router
 from routers.logs import router as logs_router
+from routers.mitre import router as mitre_router
 from routers.reports import router as reports_router
 from routers.response import router as response_router
 from routers.settings import router as settings_router
@@ -135,4 +136,5 @@ app.include_router(geo_router)
 app.include_router(abuse_router)
 app.include_router(response_router)
 app.include_router(correlation_router)
+app.include_router(mitre_router)
 app.include_router(health_router)

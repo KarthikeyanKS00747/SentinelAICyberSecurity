@@ -5,7 +5,7 @@ computed live rather than stored -- see ``compute_correlation`` for why.
 """
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from sqlalchemy import select
@@ -17,6 +17,7 @@ from utils.detector import (
     DEFAULT_HIGH_VOLUME_THRESHOLD,
     DEFAULT_PORT_SCAN_THRESHOLD,
 )
+from utils.mitre_mapping import technique_ids
 from utils.settings_service import get_setting
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,9 @@ class CorrelationResult:
     distinct_types: int
     total_alerts: int
     chain: list[str]
+    # Raw threat_name values behind `chain`, in the same order, so display
+    # layers can look up ATT&CK techniques without re-deriving the order.
+    chain_raw: list[str] = field(default_factory=list)
     # Activity times from the parsed log, not alert-creation times.
     first_seen: datetime | None = None
     last_seen: datetime | None = None
@@ -63,6 +67,19 @@ class CorrelationResult:
     @property
     def chain_text(self) -> str:
         return " → ".join(self.chain)
+
+    @property
+    def chain_text_with_techniques(self) -> str:
+        """Chain annotated with ATT&CK IDs, e.g. "T1046 Port Scan → T1110 Brute Force".
+
+        Purely a label: unmapped rules fall back to the plain name.
+        """
+        parts: list[str] = []
+        for index, label in enumerate(self.chain):
+            raw = self.chain_raw[index] if index < len(self.chain_raw) else None
+            ids = technique_ids(raw)
+            parts.append(f"{'/'.join(ids)} {label}" if ids else label)
+        return " → ".join(parts)
 
     @property
     def band(self) -> str:
@@ -223,11 +240,13 @@ def _summarise(
     ordered = sorted(alerts, key=order_key)
 
     chain: list[str] = []
+    chain_raw: list[str] = []
     seen: set[str] = set()
     for alert in ordered:
         if alert.threat_name not in seen:
             seen.add(alert.threat_name)
             chain.append(short_label(alert.threat_name))
+            chain_raw.append(alert.threat_name)
 
     if len(seen) < MIN_DISTINCT_TYPES:
         return None
@@ -246,6 +265,7 @@ def _summarise(
         distinct_types=len(seen),
         total_alerts=len(ordered),
         chain=chain,
+        chain_raw=chain_raw,
         first_seen=min(moments, key=_as_naive_utc) if moments else None,
         last_seen=max(moments, key=_as_naive_utc) if moments else None,
         max_severity=worst.value if worst else None,

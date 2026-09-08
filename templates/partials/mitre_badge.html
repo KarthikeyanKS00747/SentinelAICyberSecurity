@@ -1,0 +1,11 @@
+{# MITRE ATT&CK technique badge(s) for one alert. Empty when the rule is unmapped. #}
+{% for technique in techniques %}
+<a href="{{ technique.url }}" target="_blank" rel="noopener noreferrer"
+   title="MITRE ATT&amp;CK {{ technique.technique_id }} - {{ technique.name }} ({{ technique.tactic }}). Opens attack.mitre.org."
+   class="inline-flex items-center gap-1 mt-1 px-1.5 py-px rounded text-[9px] font-semibold
+          bg-purple-500/15 text-purple-300 border border-purple-500/30
+          hover:bg-purple-500/25 hover:text-purple-200 transition-colors">
+  <i class="fa-solid fa-crosshairs text-[8px]"></i>
+  {{ technique.technique_id }} &middot; {{ technique.name }}
+</a>
+{% endfor %}
