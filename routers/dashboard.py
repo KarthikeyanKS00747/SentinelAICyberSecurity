@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import Alert, AlertStatus, LogFile, ParsedLogEntry, SeverityLevel, ThreatIntel, User
 from routers.auth import get_current_user
+from utils.forecasting import compute_forecast
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,9 @@ async def dashboard(
         for date, count in sorted(daily_counts.items())
     ]
 
+    # Trend heuristic over recent alert volume (not a predictive model).
+    forecast = await compute_forecast(db)
+
     # Newest log file - target for the PDF report download button
     latest_log_file_id = await db.scalar(select(LogFile.id).order_by(LogFile.id.desc()).limit(1))
 
@@ -110,7 +114,8 @@ async def dashboard(
         "latest_log_file_id": latest_log_file_id,
     }
 
-    return _tpl("dashboard.html", request, stats=stats, open_alerts_count=active_alerts, current_user=current_user)
+    return _tpl("dashboard.html", request, stats=stats, open_alerts_count=active_alerts,
+                forecast=forecast, current_user=current_user)
 
 
 @router.get("/upload", response_class=HTMLResponse)
