@@ -17,6 +17,7 @@ from database import AsyncSessionLocal, Base, engine
 from models import AppSetting, SeverityLevel, ThreatIntel
 from routers.abuse import router as abuse_router
 from routers.alerts import router as alerts_router
+from routers.attack_map import router as attack_map_router
 from routers.auth import (
     AuthenticationRequired,
     authentication_required_handler,
@@ -128,6 +129,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(alerts_router)
+app.include_router(attack_map_router)
 app.include_router(settings_router)
 # API routers
 app.include_router(logs_router)
