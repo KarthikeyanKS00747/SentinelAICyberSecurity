@@ -10,6 +10,7 @@ endpoint depends on) and ``require_csrf`` for state-changing POST routes.
 """
 
 import logging
+import time
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import ROLE_ADMIN, User
+from utils.totp import verify_code
 from utils.security import (
     CSRF_FORM_FIELD,
     CSRF_HEADER_NAME,
@@ -39,6 +41,53 @@ API_PREFIX = "/api/"
 SESSION_USER_KEY = "user_id"
 # Where a signed-in non-admin lands after being refused an admin-only page.
 DENIED_REDIRECT = "/dashboard"
+
+# -- Pending second factor -------------------------------------------
+# Deliberately a DIFFERENT session key from SESSION_USER_KEY. get_current_user
+# reads only SESSION_USER_KEY, so a session holding nothing but these keys is
+# not authenticated for any route in the app: it can reach the code form and
+# nothing else. Password success alone must never write SESSION_USER_KEY.
+PENDING_2FA_USER_KEY = "pending_2fa_user_id"
+PENDING_2FA_AT_KEY = "pending_2fa_started_at"
+PENDING_2FA_TRIES_KEY = "pending_2fa_attempts"
+PENDING_2FA_NEXT_KEY = "pending_2fa_next"
+TWO_FACTOR_PATH = "/login/2fa"
+
+# The window between entering a correct password and entering the code. Short
+# enough that an unattended browser is not left one form away from a session.
+PENDING_2FA_TTL_SECONDS = 5 * 60
+# Wrong codes allowed before the pending state is discarded and the password
+# has to be entered again.
+PENDING_2FA_MAX_ATTEMPTS = 5
+
+
+def _clear_pending_2fa(session) -> None:
+    """Drop every pending-second-factor key from the session."""
+    for key in (
+        PENDING_2FA_USER_KEY,
+        PENDING_2FA_AT_KEY,
+        PENDING_2FA_TRIES_KEY,
+        PENDING_2FA_NEXT_KEY,
+    ):
+        session.pop(key, None)
+
+
+def _pending_2fa_user_id(session) -> int | None:
+    """The user id awaiting a code, or None when there is no live pending state.
+
+    An expired pending state is cleared here rather than merely ignored, so a
+    stale entry cannot sit in the cookie until something else happens to
+    overwrite it.
+    """
+    user_id = session.get(PENDING_2FA_USER_KEY)
+    if user_id is None:
+        return None
+    started_at = session.get(PENDING_2FA_AT_KEY, 0)
+    if time.time() - float(started_at or 0) > PENDING_2FA_TTL_SECONDS:
+        logger.info("Pending 2FA state for user #%s expired", user_id)
+        _clear_pending_2fa(session)
+        return None
+    return int(user_id)
 
 
 def _tpl(name: str, request: Request, status_code: int = 200, **ctx):
@@ -179,6 +228,8 @@ async def login_page(request: Request, next: str | None = None) -> Response:
     """Render the login form, issuing a CSRF token for this session."""
     if request.session.get(SESSION_USER_KEY):
         return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    # Returning to the password form abandons any half-finished 2FA step.
+    _clear_pending_2fa(request.session)
     return _tpl(
         "login.html",
         request,
@@ -227,10 +278,103 @@ async def login(
 
     # New session identity on privilege change (session-fixation defence).
     request.session.clear()
+
+    if user.totp_enabled:
+        # Password was correct, but the login is NOT complete. Only the
+        # pending keys are written -- SESSION_USER_KEY stays unset, so
+        # get_current_user still treats this session as anonymous and every
+        # protected route bounces it to the login page.
+        request.session[PENDING_2FA_USER_KEY] = user.id
+        request.session[PENDING_2FA_AT_KEY] = time.time()
+        request.session[PENDING_2FA_TRIES_KEY] = 0
+        request.session[PENDING_2FA_NEXT_KEY] = safe_next
+        rotate_csrf_token(request.session)
+        logger.info("User #%d (%s) passed password, awaiting 2FA code", user.id, user.username)
+        return RedirectResponse(TWO_FACTOR_PATH, status_code=status.HTTP_303_SEE_OTHER)
+
     request.session[SESSION_USER_KEY] = user.id
     rotate_csrf_token(request.session)
     logger.info("User #%d (%s) signed in", user.id, user.username)
 
+    return RedirectResponse(safe_next, status_code=status.HTTP_303_SEE_OTHER)
+
+
+# -- GET /login/2fa --------------------------------------------------
+@router.get(TWO_FACTOR_PATH, response_class=HTMLResponse)
+async def two_factor_page(request: Request) -> Response:
+    """Ask for the six-digit code, only while a pending state is live."""
+    if request.session.get(SESSION_USER_KEY):
+        return RedirectResponse("/", status_code=status.HTTP_303_SEE_OTHER)
+    if _pending_2fa_user_id(request.session) is None:
+        # No pending state (never started, already used, or expired): the only
+        # way forward is the password step.
+        return RedirectResponse(LOGIN_PATH, status_code=status.HTTP_303_SEE_OTHER)
+    return _tpl(
+        "login_2fa.html",
+        request,
+        csrf_token=issue_csrf_token(request.session),
+        error=None,
+    )
+
+
+# -- POST /login/2fa -------------------------------------------------
+@router.post(TWO_FACTOR_PATH, response_class=HTMLResponse)
+async def two_factor_verify(
+    request: Request,
+    code: str = Form(...),
+    csrf_token: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+) -> Response:
+    """Verify the code and only then open the real authenticated session."""
+    def failure(message: str) -> Response:
+        return _tpl(
+            "login_2fa.html",
+            request,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            csrf_token=issue_csrf_token(request.session),
+            error=message,
+        )
+
+    if not csrf_token_matches(request.session, csrf_token):
+        logger.warning("Rejected 2FA step: missing or invalid CSRF token")
+        _clear_pending_2fa(request.session)
+        return RedirectResponse(LOGIN_PATH, status_code=status.HTTP_303_SEE_OTHER)
+
+    user_id = _pending_2fa_user_id(request.session)
+    if user_id is None:
+        return RedirectResponse(LOGIN_PATH, status_code=status.HTTP_303_SEE_OTHER)
+
+    attempts = int(request.session.get(PENDING_2FA_TRIES_KEY, 0)) + 1
+    request.session[PENDING_2FA_TRIES_KEY] = attempts
+
+    user = await db.get(User, user_id)
+    # Re-checked here, not just at the password step: the account could have
+    # been deactivated, or its second factor reset by an admin, in between.
+    if user is None or not user.is_active or not user.totp_enabled:
+        logger.info("Pending 2FA for user #%s is no longer valid", user_id)
+        _clear_pending_2fa(request.session)
+        return RedirectResponse(LOGIN_PATH, status_code=status.HTTP_303_SEE_OTHER)
+
+    if not verify_code(user.totp_secret, code):
+        if attempts >= PENDING_2FA_MAX_ATTEMPTS:
+            logger.warning(
+                "User #%d exhausted %d 2FA attempts; discarding pending state",
+                user.id, PENDING_2FA_MAX_ATTEMPTS,
+            )
+            _clear_pending_2fa(request.session)
+            return RedirectResponse(LOGIN_PATH, status_code=status.HTTP_303_SEE_OTHER)
+        logger.info("Invalid 2FA code for user #%d (attempt %d)", user.id, attempts)
+        return failure("That code is not valid. Check your authenticator app and try again.")
+
+    # Code accepted: promote the pending state into a real session. The next
+    # target is read before the clear, since clearing drops it too.
+    safe_next = request.session.get(PENDING_2FA_NEXT_KEY) or "/"
+    if not _is_safe_next(safe_next):
+        safe_next = "/"
+    request.session.clear()
+    request.session[SESSION_USER_KEY] = user.id
+    rotate_csrf_token(request.session)
+    logger.info("User #%d (%s) signed in with 2FA", user.id, user.username)
     return RedirectResponse(safe_next, status_code=status.HTTP_303_SEE_OTHER)
 
 

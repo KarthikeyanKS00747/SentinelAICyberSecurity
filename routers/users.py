@@ -2,8 +2,9 @@
 
 Provides:
   GET  /users               - Every account and its role.
-  POST /api/users/{id}/role - Change one account's role; returns the refreshed
-                              row as an HTML fragment for an HTMX swap.
+  POST /api/users/{id}/role      - Change one account's role; returns the
+                                   refreshed row as an HTML fragment.
+  POST /api/users/{id}/reset-2fa - Clear a locked-out account's second factor.
 
 Roles are the only thing editable here. Creating accounts and setting
 passwords stay in ``utils/seed_admin.py``: SentinelAI has no self-service
@@ -22,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from models import ROLE_ADMIN, ROLES, User
 from routers.auth import require_admin, require_csrf
-from utils.audit import ACTION_ROLE_CHANGE, record_audit
+from utils.audit import ACTION_2FA_RESET, ACTION_ROLE_CHANGE, record_audit
 
 logger = logging.getLogger(__name__)
 
@@ -133,3 +134,49 @@ async def update_user_role(
 
     return _tpl("partials/user_row.html", request, user=target, roles=ROLES,
                 current_user=current_user, saved=True)
+
+
+# -- POST /api/users/{user_id}/reset-2fa -----------------------------
+@router.post("/api/users/{user_id}/reset-2fa", response_class=HTMLResponse)
+async def reset_user_two_factor(
+    user_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+    _csrf: None = Depends(require_csrf),
+) -> HTMLResponse:
+    """Clear one account's second factor so a locked-out user can sign in again.
+
+    This is the recovery path in place of backup codes (see the README). It
+    only removes the second factor -- it never reveals a secret, sets a
+    password, or signs anyone in, so an admin cannot use it to take over an
+    account without the password holder noticing 2FA is off.
+    """
+    target = await db.get(User, user_id)
+    if target is None:
+        return HTMLResponse(
+            content='<tr><td colspan="6" class="px-4 py-3 text-red-400 text-xs">User not found.</td></tr>',
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    if not target.totp_enabled and target.totp_secret is None:
+        return _tpl("partials/user_row.html", request, user=target, roles=ROLES,
+                    current_user=current_user,
+                    error="That account does not have two-factor authentication set up.",
+                    status_code=status.HTTP_409_CONFLICT)
+
+    target.totp_enabled = False
+    target.totp_secret = None
+    record_audit(
+        db, current_user, ACTION_2FA_RESET,
+        target=f"user #{target.id} ({target.username})",
+        details="second factor cleared by an administrator; the user must re-enroll",
+    )
+    await db.commit()
+    await db.refresh(target)
+    logger.warning("Admin #%d reset 2FA for user #%d (%s)",
+                   current_user.id, target.id, target.username)
+
+    return _tpl("partials/user_row.html", request, user=target, roles=ROLES,
+                current_user=current_user, saved=True,
+                notice="Two-factor authentication cleared. The user can sign in with their password and re-enroll.")

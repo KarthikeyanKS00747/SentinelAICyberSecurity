@@ -19,7 +19,8 @@
       <strong class="text-amber-300">Administrators</strong> can do all of it, and every action
       they take is written to the <a href="/audit-log" class="text-cyan-400 hover:underline">audit log</a>.
       Accounts are created with <code class="font-mono text-slate-300">python -m utils.seed_admin</code>,
-      not from here.
+      not from here. A user who has lost their authenticator is recovered with
+      <strong class="text-red-300">Reset 2FA</strong> below &mdash; SentinelAI has no backup codes.
     </p>
   </div>
   <span class="text-xs text-slate-500 font-mono whitespace-nowrap self-center">
@@ -46,6 +47,8 @@
           <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Account</th>
           <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Role</th>
           <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Status</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3"
+              title="Two-factor authentication. Reset clears it for a user who lost their authenticator.">2FA</th>
           <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Change Role</th>
         </tr>
       </thead>
@@ -54,7 +57,7 @@
         {% include "partials/user_row.html" %}
         {% else %}
         <tr>
-          <td colspan="5" class="text-center py-16 text-slate-500">
+          <td colspan="6" class="text-center py-16 text-slate-500">
             <i class="fa-solid fa-users text-4xl opacity-15 mb-3 block"></i>
             <p class="text-sm font-medium text-slate-400">No accounts</p>
           </td>

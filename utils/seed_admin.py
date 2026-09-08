@@ -12,7 +12,30 @@ Usage::
     SENTINEL_ADMIN_EMAIL=analyst@example.com \\
     SENTINEL_ADMIN_PASSWORD=... python -m utils.seed_admin
 
-Re-running with an existing username resets that account's password.
+Re-running with an existing username resets that account's password and
+re-asserts the admin role.
+
+Recovering a user locked out by two-factor authentication
+---------------------------------------------------------
+SentinelAI has no backup codes. If someone loses their authenticator device:
+
+1. Preferred -- another administrator signs in and presses **Reset 2FA** on
+   the /users page. That clears ``totp_enabled`` and ``totp_secret`` and writes
+   a ``2fa_reset`` entry to the audit log. The user then signs in with their
+   password alone and re-enrols from /settings/2fa.
+
+2. If *every* administrator is locked out, there is no one left to press that
+   button, so fall back to the database directly. Stop the server first::
+
+       sqlite3 sentinelai.db "UPDATE users SET totp_enabled = 0,
+                              totp_secret = NULL WHERE username = 'admin';"
+
+   This fallback leaves NO audit-log entry, because it bypasses the
+   application entirely. Prefer route 1 whenever an admin can still sign in.
+
+Note that re-running this script does *not* clear a second factor: it only
+touches the password, email and role, so an operator resetting a forgotten
+password cannot silently strip 2FA off an account as a side effect.
 """
 
 import asyncio
@@ -116,6 +139,11 @@ def main() -> None:
     action = asyncio.run(seed_admin(username, email, password))
     print(f"Admin account {action}: {username} <{email}> (role: {ROLE_ADMIN})")
     print("Sign in at http://localhost:8000/login")
+    print()
+    print("Note: this does not change two-factor authentication. If this account is")
+    print("locked out by a lost authenticator, another admin can clear it with")
+    print("'Reset 2FA' on the /users page. If every admin is locked out, see the")
+    print("direct-database fallback documented at the top of this file.")
 
 
 if __name__ == "__main__":

@@ -25,6 +25,9 @@ ACTION_IP_BLOCK = "ip.block"
 ACTION_IP_UNBLOCK = "ip.unblock"
 ACTION_ROLE_CHANGE = "user.role_change"
 ACTION_SIMULATION_START = "simulation.start"
+ACTION_2FA_ENABLED = "2fa_enabled"
+ACTION_2FA_DISABLED = "2fa_disabled"
+ACTION_2FA_RESET = "2fa_reset"
 
 # Human-readable labels and icons for the audit page.
 ACTION_LABELS = {
@@ -33,6 +36,9 @@ ACTION_LABELS = {
     ACTION_IP_UNBLOCK: ("Block lifted", "fa-lock-open", "text-green-400"),
     ACTION_ROLE_CHANGE: ("Role changed", "fa-user-shield", "text-amber-400"),
     ACTION_SIMULATION_START: ("Simulation started", "fa-flask", "text-purple-400"),
+    ACTION_2FA_ENABLED: ("2FA enabled", "fa-shield-halved", "text-green-400"),
+    ACTION_2FA_DISABLED: ("2FA disabled", "fa-shield-halved", "text-amber-400"),
+    ACTION_2FA_RESET: ("2FA reset by admin", "fa-key", "text-red-400"),
 }
 
 # Column widths in the model; over-long input is trimmed rather than raising,

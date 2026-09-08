@@ -37,6 +37,7 @@ from routers.mitre import router as mitre_router
 from routers.reports import router as reports_router
 from routers.response import router as response_router
 from routers.settings import router as settings_router
+from routers.twofactor import router as twofactor_router
 from routers.users import router as users_router
 
 logger = logging.getLogger(__name__)
@@ -84,6 +85,22 @@ async def lifespan(_: FastAPI):
                 )
             except OperationalError:
                 logger.info("role column already exists")
+        # TOTP columns. Added separately from role because an install may
+        # already have been migrated for RBAC but not for 2FA. Both default to
+        # "no second factor", which is the correct state for every account that
+        # predates this: nobody can be locked out by the migration itself.
+        columns = {row[1] for row in (await connection.execute(text("PRAGMA table_info(users)"))).fetchall()}
+        for column, ddl in (
+            ("totp_secret", "ALTER TABLE users ADD COLUMN totp_secret VARCHAR(64)"),
+            ("totp_enabled", "ALTER TABLE users ADD COLUMN totp_enabled BOOLEAN DEFAULT 0"),
+        ):
+            if column in columns:
+                continue
+            try:
+                await connection.execute(text(ddl))
+                logger.info("Added users.%s", column)
+            except OperationalError:
+                logger.info("%s column already exists", column)
     async with AsyncSessionLocal() as db:
         existing = await db.scalar(select(ThreatIntel.id).limit(1))
         if existing is None:
@@ -180,6 +197,7 @@ app.include_router(alerts_router)
 app.include_router(anomalies_router)
 app.include_router(attack_map_router)
 app.include_router(settings_router)
+app.include_router(twofactor_router)
 app.include_router(users_router)
 app.include_router(audit_router)
 # API routers

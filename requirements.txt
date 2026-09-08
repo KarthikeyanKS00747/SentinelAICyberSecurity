@@ -14,4 +14,8 @@ reportlab
 passlib[bcrypt]
 bcrypt<4.1
 itsdangerous
+# TOTP two-factor auth. qrcode[pil] pulls Pillow, which is what renders the
+# enrollment QR to a PNG for base64 embedding.
+pyotp
+qrcode[pil]
 scikit-learn

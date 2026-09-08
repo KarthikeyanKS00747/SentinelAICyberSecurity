@@ -53,6 +53,13 @@ class User(Base):
     # Authorization only. Authentication (is_active, password_hash) is
     # unchanged: an inactive admin still cannot sign in.
     role: Mapped[str] = mapped_column(String(16), default=ROLE_ANALYST, index=True)
+    # TOTP second factor. The secret is only ever written once the user has
+    # proved they can generate a code from it, so a non-null secret always
+    # belongs to a confirmed enrollment. ``totp_enabled`` stays the field the
+    # login flow branches on -- clearing it disables the second factor without
+    # having to null the secret in the same statement.
+    totp_secret: Mapped[str | None] = mapped_column(String(64))
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 

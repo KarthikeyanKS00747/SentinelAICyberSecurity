@@ -11,9 +11,13 @@
     <p role="alert" class="mt-1.5 flex items-center gap-1.5 text-xs text-red-300">
       <i class="fa-solid fa-circle-exclamation text-red-400 text-[10px]"></i>{{ error }}
     </p>
+    {% elif notice %}
+    <p class="mt-1.5 flex items-center gap-1.5 text-xs text-green-300">
+      <i class="fa-solid fa-circle-check text-green-400 text-[10px]"></i>{{ notice }}
+    </p>
     {% elif saved %}
     <p class="mt-1.5 flex items-center gap-1.5 text-xs text-green-300">
-      <i class="fa-solid fa-circle-check text-green-400 text-[10px]"></i>Role saved.
+      <i class="fa-solid fa-circle-check text-green-400 text-[10px]"></i>Saved.
     </p>
     {% endif %}
   </td>
@@ -37,6 +41,37 @@
     <span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/15 text-green-300">ACTIVE</span>
     {% else %}
     <span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-500/15 text-slate-400">INACTIVE</span>
+    {% endif %}
+  </td>
+
+  <td class="px-4 py-3">
+    {% if user.totp_enabled %}
+    <div class="flex items-center gap-2">
+      <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold
+                   bg-green-500/15 text-green-300 border border-green-500/30">
+        <i class="fa-solid fa-shield-halved text-[10px]"></i>ON
+      </span>
+      {# Recovery path in place of backup codes: clears the second factor so a
+         user who lost their authenticator can sign in with their password and
+         re-enroll. Never reveals a secret and never signs anyone in. #}
+      <form hx-post="/api/users/{{ user.id }}/reset-2fa"
+            hx-target="#user-row-{{ user.id }}"
+            hx-swap="outerHTML"
+            hx-confirm="Clear two-factor authentication for {{ user.username }}? They will sign in with their password alone until they re-enroll."
+            class="inline">
+        <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}" />
+        <button type="submit"
+                title="Clear this account's second factor so a locked-out user can sign in again."
+                class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold
+                       bg-red-500/10 text-red-300 border border-red-500/30
+                       hover:bg-red-500/20 hover:text-red-200 transition-colors">
+          <i class="fa-solid fa-key text-[9px]"></i>
+          Reset 2FA
+        </button>
+      </form>
+    </div>
+    {% else %}
+    <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-500/15 text-slate-400">OFF</span>
     {% endif %}
   </td>
 
