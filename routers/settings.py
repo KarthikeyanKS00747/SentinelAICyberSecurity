@@ -16,7 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import AppSetting, User
-from routers.auth import get_current_user, require_csrf
+from routers.auth import get_current_user, require_admin, require_csrf
+from utils.audit import ACTION_SETTING_UPDATE, record_audit
 from utils.settings_service import update_setting
 
 logger = logging.getLogger(__name__)
@@ -63,6 +64,9 @@ async def settings_page(
     current_user: User = Depends(get_current_user),
 ) -> HTMLResponse:
     """Render every configured setting, grouped by area."""
+    # Reading settings is deliberately not admin-gated: an analyst needs to see
+    # the thresholds their alerts were produced under. Only the write route
+    # below is gated, and the template renders the editors read-only to match.
     settings = list((await db.scalars(select(AppSetting).order_by(AppSetting.key))).all())
     return _tpl(
         "settings.html",
@@ -80,7 +84,7 @@ async def update_setting_endpoint(
     request: Request,
     value: str = Form(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     _csrf: None = Depends(require_csrf),
 ) -> HTMLResponse:
     """Validate and store one setting, returning the refreshed row."""
@@ -103,6 +107,17 @@ async def update_setting_endpoint(
             setting=current,
             error=str(exc),
             submitted=value,
+            current_user=current_user,
         )
 
-    return _tpl("partials/setting_row.html", request, setting=setting, saved=True)
+    # update_setting commits the change itself, so the audit row is a separate
+    # write here rather than sharing that transaction.
+    record_audit(
+        db, current_user, ACTION_SETTING_UPDATE,
+        target=setting.key,
+        details=f"set to {setting.value!r}",
+    )
+    await db.commit()
+
+    return _tpl("partials/setting_row.html", request, setting=setting, saved=True,
+                current_user=current_user)

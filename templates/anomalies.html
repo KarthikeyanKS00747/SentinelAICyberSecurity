@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}ML Anomalies – SentinelAI{% endblock %}
+{% block page_title %}ML Anomaly Detection (Isolation Forest){% endblock %}
+{% block page_subtitle %}Unsupervised outlier scoring – separate from the rule-based alerts{% endblock %}
+
+{% block content %}
+
+<!-- Deliberately violet/dashed throughout: these findings must never be
+     mistaken at a glance for the red/amber severity-carrying rule alerts. -->
+<div class="glass-card rounded-xl p-4 mb-6 border border-dashed border-purple-500/40 flex items-start gap-3">
+  <div class="w-9 h-9 rounded-lg bg-purple-500/15 flex items-center justify-center flex-shrink-0">
+    <i class="fa-solid fa-brain text-purple-400"></i>
+  </div>
+  <div class="flex-1">
+    <h2 class="text-sm font-semibold text-white">
+      These are not rule-based alerts
+    </h2>
+    <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">
+      An <strong class="text-purple-300">Isolation Forest</strong>
+      ({{ n_estimators }} trees, contamination {{ contamination }}) is fitted at analysis time on the
+      source IPs of <em>each uploaded file on its own</em>. A score says only
+      <strong class="text-slate-300">“this IP behaves unlike the other IPs in the same file”</strong> —
+      it is relative, unsupervised, and carries no severity, status or triage action.
+      A high score is a lead to look at, not a confirmed threat; a low score is not a clean bill of health.
+      Rule-based findings live on the <a href="/alerts" class="text-cyan-400 hover:underline">Alerts</a> page.
+      Files with fewer than {{ min_distinct_ips }} distinct source IPs are skipped rather than
+      fitted on too few points.
+    </p>
+  </div>
+  <span class="text-xs text-slate-500 font-mono whitespace-nowrap self-center">
+    {{ total_anomalies }} flagged IP{% if total_anomalies != 1 %}s{% endif %}
+  </span>
+</div>
+
+{% if not sklearn_available %}
+<div class="glass-card rounded-xl p-4 mb-6 border border-amber-500/40 flex items-start gap-3">
+  <i class="fa-solid fa-triangle-exclamation text-amber-400 mt-0.5"></i>
+  <p class="text-xs text-slate-300 leading-relaxed">
+    <strong class="text-white">scikit-learn is not installed</strong>, so no new files are being
+    scored. Rule-based detection is unaffected. Install it with
+    <code class="font-mono text-purple-300">pip install -r requirements.txt</code>.
+  </p>
+</div>
+{% endif %}
+
+{% for group in groups %}
+<div class="glass-card rounded-xl overflow-hidden mb-4 border-l-2 border-purple-500/50">
+  <div class="px-4 py-3 bg-sentinel-900/60 border-b border-blue-900/40 flex items-center gap-3 flex-wrap">
+    <i class="fa-solid fa-file-lines text-slate-500"></i>
+    <span class="text-sm font-semibold text-white">{{ group.log_file.filename }}</span>
+    <span class="text-xs text-slate-500 font-mono">
+      uploaded {{ group.log_file.uploaded_at.strftime('%Y-%m-%d %H:%M') if group.log_file.uploaded_at else '—' }}
+    </span>
+    {% if group.skipped %}
+    <span class="text-xs px-2 py-0.5 rounded-full bg-slate-500/15 text-slate-400 border border-slate-500/30">
+      <i class="fa-solid fa-ban mr-1"></i>ML skipped
+    </span>
+    {% else %}
+    <span class="text-xs px-2 py-0.5 rounded-full bg-purple-500/15 text-purple-300 border border-purple-500/30">
+      {{ group.alerts | length }} anomal{% if group.alerts | length == 1 %}y{% else %}ies{% endif %}
+      of {{ group.ip_count }} IPs
+    </span>
+    {% endif %}
+  </div>
+
+  <p class="px-4 py-2 text-xs text-slate-400 border-b border-blue-900/20">{{ group.note }}</p>
+
+  {% if group.alerts %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-blue-900/40">
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Source IP</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3"
+              title="0–100, higher means further from the rest of this file's IPs. Not a severity.">Anomaly Score</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">What Drove It</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Feature Values</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Detected</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-blue-900/20">
+        {% for item in group.alerts %}
+        <tr class="alert-row">
+          <td class="px-4 py-3 font-mono text-xs text-cyan-300 align-top whitespace-nowrap">{{ item.source_ip }}</td>
+          <td class="px-4 py-3 align-top">
+            <div class="flex items-center gap-2">
+              <div class="w-16 h-1.5 bg-sentinel-800 rounded-full overflow-hidden">
+                <div class="h-full rounded-full
+                  {% if item.band == 'high' %}bg-purple-400{% elif item.band == 'medium' %}bg-purple-500/70{% else %}bg-purple-600/50{% endif %}"
+                  style="width: {{ item.anomaly_score }}%"></div>
+              </div>
+              <span class="font-bold text-xs text-purple-300 font-mono">{{ '%.1f' | format(item.anomaly_score) }}</span>
+            </div>
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-300 align-top max-w-md">
+            {{ item.summary }}
+            {% if item.features %}
+            <div class="mt-1.5 flex flex-wrap gap-1">
+              {% for feature in item.features %}
+              <span class="px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-mono text-[10px]"
+                    title="{{ '%.1f' | format(feature.deviation) }} robust deviations from this file's median">
+                {{ feature.feature }} {% if feature.direction == 'high' %}&uarr;{% else %}&darr;{% endif %}
+              </span>
+              {% endfor %}
+            </div>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-500 font-mono align-top">
+            {% for name, value in item.all_features.items() %}<div>{{ name }}={{ value }}</div>{% endfor %}
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-500 font-mono align-top whitespace-nowrap">
+            {{ item.detected_at.strftime('%Y-%m-%d %H:%M') if item.detected_at else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="glass-card rounded-xl text-center py-16 text-slate-500">
+  <i class="fa-solid fa-brain text-4xl opacity-15 mb-3 block"></i>
+  <p class="text-sm font-medium text-slate-400">Nothing scored yet</p>
+  <p class="text-xs mt-1">Upload a log file with at least {{ min_distinct_ips }} distinct source IPs.</p>
+</div>
+{% endfor %}
+
+{% endblock %}

@@ -12,6 +12,18 @@
     <span hx-get="/api/alerts/{{ alert.id }}/mitre"
           hx-trigger="load"
           hx-swap="innerHTML"></span>
+    {# recommended_action has been written by the detector since Phase 3 but was
+       never displayed anywhere. Surfacing it here so the triage guidance each
+       rule carries is actually readable -- it matters most for Credential
+       Compromise, whose action ("reset credentials") is the opposite of the
+       usual "block the source IP". Read-only for every role. #}
+    {% if alert.recommended_action %}
+    <div class="text-[10px] text-slate-500 mt-1 flex items-start gap-1"
+         title="Recommended action for this rule.">
+      <i class="fa-solid fa-lightbulb text-[8px] mt-0.5 text-amber-500/70"></i>
+      <span>{{ alert.recommended_action }}</span>
+    </div>
+    {% endif %}
   </td>
 
   <!-- Severity Badge -->

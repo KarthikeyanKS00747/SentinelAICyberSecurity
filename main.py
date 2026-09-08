@@ -14,24 +14,31 @@ from sqlalchemy.exc import OperationalError
 import models  # noqa: F401 - registers all ORM models with Base.metadata.
 from config import settings
 from database import AsyncSessionLocal, Base, engine
-from models import AppSetting, SeverityLevel, ThreatIntel
+from models import ROLE_ADMIN, ROLE_ANALYST, AppSetting, SeverityLevel, ThreatIntel
 from routers.abuse import router as abuse_router
 from routers.alerts import router as alerts_router
+from routers.anomalies import router as anomalies_router
 from routers.attack_map import router as attack_map_router
+from routers.audit import router as audit_router
 from routers.auth import (
     AuthenticationRequired,
+    AuthorizationRequired,
     authentication_required_handler,
+    authorization_required_handler,
     router as auth_router,
 )
 from routers.correlation import router as correlation_router
 from routers.dashboard import router as dashboard_router
 from routers.geo import router as geo_router
 from routers.health import router as health_router
+from routers.live import router as live_router
 from routers.logs import router as logs_router
 from routers.mitre import router as mitre_router
 from routers.reports import router as reports_router
 from routers.response import router as response_router
 from routers.settings import router as settings_router
+from routers.twofactor import router as twofactor_router
+from routers.users import router as users_router
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +64,43 @@ async def lifespan(_: FastAPI):
                 await connection.execute(text("ALTER TABLE alerts ADD COLUMN recommended_action VARCHAR(128)"))
             except OperationalError:
                 logger.info("recommended_action column already exists")
+        columns = await connection.execute(text("PRAGMA table_info(users)"))
+        if "role" not in {row[1] for row in columns.fetchall()}:
+            try:
+                await connection.execute(
+                    text(f"ALTER TABLE users ADD COLUMN role VARCHAR(16) DEFAULT '{ROLE_ANALYST}'")
+                )
+                # Accounts that predate RBAC were provisioned by hand through
+                # seed_admin.py, so they are the operators. Defaulting them to
+                # analyst would lock every existing install out of settings,
+                # blocking and user management with no way back in. This runs
+                # only in the branch that adds the column, so a later analyst
+                # account is never promoted by a restart.
+                promoted = await connection.execute(
+                    text(f"UPDATE users SET role = '{ROLE_ADMIN}' WHERE role IS NULL OR role = '{ROLE_ANALYST}'")
+                )
+                logger.info(
+                    "Added users.role and promoted %d pre-existing account(s) to admin",
+                    promoted.rowcount,
+                )
+            except OperationalError:
+                logger.info("role column already exists")
+        # TOTP columns. Added separately from role because an install may
+        # already have been migrated for RBAC but not for 2FA. Both default to
+        # "no second factor", which is the correct state for every account that
+        # predates this: nobody can be locked out by the migration itself.
+        columns = {row[1] for row in (await connection.execute(text("PRAGMA table_info(users)"))).fetchall()}
+        for column, ddl in (
+            ("totp_secret", "ALTER TABLE users ADD COLUMN totp_secret VARCHAR(64)"),
+            ("totp_enabled", "ALTER TABLE users ADD COLUMN totp_enabled BOOLEAN DEFAULT 0"),
+        ):
+            if column in columns:
+                continue
+            try:
+                await connection.execute(text(ddl))
+                logger.info("Added users.%s", column)
+            except OperationalError:
+                logger.info("%s column already exists", column)
     async with AsyncSessionLocal() as db:
         existing = await db.scalar(select(ThreatIntel.id).limit(1))
         if existing is None:
@@ -80,6 +124,26 @@ async def lifespan(_: FastAPI):
                     AppSetting(key="ollama.explanation_timeout_seconds", value="120", value_type="int", description="Seconds to wait for a local Ollama explanation. Not wired to the request timeout yet."),
                 ]
             )
+            await db.commit()
+
+        # Seeded per-key rather than in the block above, because that block
+        # only fires on a completely empty settings table -- an existing
+        # install would otherwise never receive these rows.
+        later_defaults = [
+            AppSetting(key="anomaly.contamination", value="0.1", value_type="float", description="Expected share of source IPs the Isolation Forest treats as outliers. Must be within (0, 0.5]."),
+            AppSetting(key="anomaly.min_distinct_ips", value="5", value_type="int", description="Distinct source IPs a log file needs before ML anomaly detection runs on it at all."),
+            AppSetting(key="detection.brute_force_window_minutes", value="5", value_type="int", description="Rolling window in minutes over which failed authentications are counted for the Brute Force rule."),
+        ]
+        existing_keys = set(
+            (await db.scalars(
+                select(AppSetting.key).where(
+                    AppSetting.key.in_([setting.key for setting in later_defaults])
+                )
+            )).all()
+        )
+        missing = [setting for setting in later_defaults if setting.key not in existing_keys]
+        if missing:
+            db.add_all(missing)
             await db.commit()
     yield
     await engine.dispose()
@@ -115,6 +179,7 @@ app.add_middleware(
 
 
 app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
+app.add_exception_handler(AuthorizationRequired, authorization_required_handler)
 
 
 @app.exception_handler(Exception)
@@ -129,8 +194,12 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(alerts_router)
+app.include_router(anomalies_router)
 app.include_router(attack_map_router)
 app.include_router(settings_router)
+app.include_router(twofactor_router)
+app.include_router(users_router)
+app.include_router(audit_router)
 # API routers
 app.include_router(logs_router)
 app.include_router(reports_router)
@@ -139,4 +208,5 @@ app.include_router(abuse_router)
 app.include_router(response_router)
 app.include_router(correlation_router)
 app.include_router(mitre_router)
+app.include_router(live_router)
 app.include_router(health_router)

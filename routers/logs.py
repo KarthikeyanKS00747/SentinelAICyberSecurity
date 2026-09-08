@@ -3,12 +3,15 @@
 import logging
 
 from fastapi import APIRouter, Depends, File, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import LogFile, LogFileStatus, ParsedLogEntry, User
+from models import Alert, LogFile, LogFileStatus, ParsedLogEntry, User
 from routers.auth import get_current_user, require_csrf
+from utils.anomaly_detector import run_anomaly_detection
 from utils.detector import run_threat_detection
+from utils.live_bus import broadcast_new_alerts
 from utils.log_parser import parse_log
 from utils.upload_handler import delete_saved_upload, validate_and_save_upload
 
@@ -73,10 +76,48 @@ async def upload_log(
         log_file.status = LogFileStatus.FAILED
         await db.commit()
 
+    # Push the committed alerts to any open browser tab. Kept outside the block
+    # above so nothing about the live layer can turn a successful analysis into
+    # a failed upload; broadcast_new_alerts swallows its own failures too.
+    if alerts_generated:
+        try:
+            new_alerts = list(
+                (await db.scalars(select(Alert).where(Alert.log_file_id == log_file.id))).all()
+            )
+            await broadcast_new_alerts(new_alerts)
+        except Exception:
+            logger.exception("Could not broadcast alerts for log file %s", log_file.id)
+
+    # Second pass: unsupervised ML outlier detection over the same entries.
+    # It is strictly additive -- the rule-based alerts above are already
+    # committed, and anything that goes wrong here is logged and dropped
+    # rather than allowed to fail the upload, as with the geolocation and
+    # AbuseIPDB lookups.
+    ml_anomalies = 0
+    ml_message = ""
+    try:
+        anomaly_result = await run_anomaly_detection(db, log_file.id)
+        ml_anomalies = anomaly_result.anomalies_recorded
+        ml_message = anomaly_result.message
+        if anomaly_result.skipped:
+            logger.info(
+                "ML anomaly detection skipped for log file %s: %s",
+                log_file.id,
+                anomaly_result.skip_reason,
+            )
+    except Exception:
+        # run_anomaly_detection already swallows its own failures; this guards
+        # against anything unexpected on the way in or out of it.
+        logger.exception("ML anomaly detection raised for log file %s", log_file.id)
+        await db.rollback()
+        ml_message = "ML anomaly detection failed; rule-based alerts are unaffected."
+
     return {
         "id": log_file.id,
         "filename": log_file.filename,
         "entries_parsed": len(records),
         "alerts_generated": alerts_generated,
+        "ml_anomalies": ml_anomalies,
+        "ml_status": ml_message,
         "status": log_file.status.value,
     }

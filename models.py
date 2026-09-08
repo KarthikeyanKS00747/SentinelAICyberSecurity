@@ -14,6 +14,15 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# Roles are a plain string column rather than an Enum: the column is added by
+# an ALTER on existing SQLite databases, and a native enum would need the
+# stored values to be rewritten to match. Two roles is also not enough
+# structure to be worth the migration cost.
+ROLE_ANALYST = "analyst"
+ROLE_ADMIN = "admin"
+ROLES = (ROLE_ANALYST, ROLE_ADMIN)
+
+
 class SeverityLevel(str, enum.Enum):
     LOW = "low"
     MEDIUM = "medium"
@@ -41,10 +50,25 @@ class User(Base):
     username: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
+    # Authorization only. Authentication (is_active, password_hash) is
+    # unchanged: an inactive admin still cannot sign in.
+    role: Mapped[str] = mapped_column(String(16), default=ROLE_ANALYST, index=True)
+    # TOTP second factor. The secret is only ever written once the user has
+    # proved they can generate a code from it, so a non-null secret always
+    # belongs to a confirmed enrollment. ``totp_enabled`` stays the field the
+    # login flow branches on -- clearing it disables the second factor without
+    # having to null the secret in the same statement.
+    totp_secret: Mapped[str | None] = mapped_column(String(64))
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
     log_files: Mapped[list["LogFile"]] = relationship(back_populates="owner")
+
+    @property
+    def is_admin(self) -> bool:
+        """Whether this user may perform admin-gated actions."""
+        return self.role == ROLE_ADMIN
 
 
 class LogFile(Base):
@@ -195,3 +219,53 @@ class ThreatIntel(Base):
     source: Mapped[str | None] = mapped_column(String(128))
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class AnomalyAlert(Base):
+    """One source IP flagged as an outlier by the ML anomaly detector.
+
+    Deliberately separate from ``Alert``: rule-based alerts state *which*
+    known rule fired and carry a severity, status and triage action, while
+    these say only "this IP does not look like its peers in this file".
+    Mixing the two would make an unsupervised, relative finding read as a
+    confirmed threat. Same reasoning that keeps GeoLocation/AbuseCheck out
+    of ThreatIntel.
+    """
+
+    __tablename__ = "anomaly_alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    log_file_id: Mapped[int] = mapped_column(ForeignKey("log_files.id"), index=True)
+    source_ip: Mapped[str] = mapped_column(String(45), index=True)
+    anomaly_score: Mapped[float] = mapped_column(Float, default=0.0)
+    # JSON list of {feature, value, direction, deviation, label} describing the
+    # features that pushed this IP away from the file's population.
+    contributing_features: Mapped[str | None] = mapped_column(Text)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    log_file: Mapped["LogFile"] = relationship()
+
+
+class AuditLog(Base):
+    """Append-only record of one admin-gated action.
+
+    Written inside the same transaction as the change it describes wherever
+    possible, so an action cannot commit without its audit row. Nothing in the
+    app updates or deletes these rows.
+
+    ``user_id`` is nullable and carries no cascade on purpose: the record must
+    outlive the account that made it, so ``username`` is snapshotted here
+    rather than being resolved through the relationship at display time.
+    """
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), index=True)
+    username: Mapped[str | None] = mapped_column(String(64))
+    action: Mapped[str] = mapped_column(String(64), index=True)
+    target: Mapped[str | None] = mapped_column(String(255))
+    details: Mapped[str | None] = mapped_column(Text)
+    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+
+    user: Mapped["User | None"] = relationship()

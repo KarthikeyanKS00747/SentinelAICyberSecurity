@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Users – SentinelAI{% endblock %}
+{% block page_title %}User Management{% endblock %}
+{% block page_subtitle %}Accounts and their roles — administrators only{% endblock %}
+
+{% block content %}
+
+<div class="glass-card rounded-xl p-4 mb-6 flex items-start gap-3">
+  <div class="w-9 h-9 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+    <i class="fa-solid fa-user-shield text-amber-400"></i>
+  </div>
+  <div class="flex-1">
+    <h2 class="text-sm font-semibold text-white">Roles</h2>
+    <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">
+      <strong class="text-blue-300">Analysts</strong> can see every data page — dashboard, alerts,
+      threat intel, ML anomalies, correlation and the attack map — but cannot change settings,
+      block or unblock an IP, run a simulation, or reach this page.
+      <strong class="text-amber-300">Administrators</strong> can do all of it, and every action
+      they take is written to the <a href="/audit-log" class="text-cyan-400 hover:underline">audit log</a>.
+      Accounts are created with <code class="font-mono text-slate-300">python -m utils.seed_admin</code>,
+      not from here. A user who has lost their authenticator is recovered with
+      <strong class="text-red-300">Reset 2FA</strong> below &mdash; SentinelAI has no backup codes.
+    </p>
+  </div>
+  <span class="text-xs text-slate-500 font-mono whitespace-nowrap self-center">
+    {{ users | length }} account{% if users | length != 1 %}s{% endif %} &middot;
+    {{ admin_count }} admin{% if admin_count != 1 %}s{% endif %}
+  </span>
+</div>
+
+{% if admin_count == 1 %}
+<div class="glass-card rounded-xl p-3 mb-6 border border-amber-500/30 flex items-center gap-2.5">
+  <i class="fa-solid fa-triangle-exclamation text-amber-400 text-xs"></i>
+  <p class="text-xs text-slate-300">
+    Only one administrator remains. Demoting it is refused — promote another account first.
+  </p>
+</div>
+{% endif %}
+
+<div class="glass-card rounded-xl overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-blue-900/40 bg-sentinel-900/60">
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">ID</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Account</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Role</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Status</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3"
+              title="Two-factor authentication. Reset clears it for a user who lost their authenticator.">2FA</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Change Role</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-blue-900/20">
+        {% for user in users %}
+        {% include "partials/user_row.html" %}
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center py-16 text-slate-500">
+            <i class="fa-solid fa-users text-4xl opacity-15 mb-3 block"></i>
+            <p class="text-sm font-medium text-slate-400">No accounts</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // A refused role change is answered with 409 (last administrator) or 422
+  // (unknown role), and htmx will not swap a non-2xx response by default, so
+  // the reason would never reach the screen -- the row would just sit there
+  // unchanged with no explanation. Allow the swap for user rows while leaving
+  // the status code intact for API callers. Same approach as settings.html.
+  document.body.addEventListener('htmx:beforeSwap', function (evt) {
+    const target = evt.detail && evt.detail.target;
+    const status = evt.detail && evt.detail.xhr && evt.detail.xhr.status;
+    if (target && target.id && target.id.indexOf('user-row-') === 0 &&
+        (status === 409 || status === 422)) {
+      evt.detail.shouldSwap = true;
+      evt.detail.isError = false;
+    }
+  });
+</script>
+{% endblock %}

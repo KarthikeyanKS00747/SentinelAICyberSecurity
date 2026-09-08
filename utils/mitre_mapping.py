@@ -32,6 +32,13 @@ class MitreTechnique:
 T1071 = MitreTechnique("T1071", "Application Layer Protocol", "Command and Control")
 T1110 = MitreTechnique("T1110", "Brute Force", "Credential Access")
 T1046 = MitreTechnique("T1046", "Network Service Discovery", "Discovery")
+# T1078 is listed under four tactics on attack.mitre.org today -- Stealth,
+# Persistence, Privilege Escalation and Initial Access (ATT&CK renamed the
+# "Defense Evasion" tactic to "Stealth"). MitreTechnique holds a single
+# tactic, and Initial Access is the one this rule actually evidences: an
+# attacker guessing a password and getting in. The others describe what they
+# might do next, which the detector has no evidence of.
+T1078 = MitreTechnique("T1078", "Valid Accounts", "Initial Access")
 
 # Rule -> technique(s). Keys are the exact threat_name values utils/detector.py
 # writes, so a rename there shows up here as an unmapped alert rather than a
@@ -51,6 +58,12 @@ THREAT_TECHNIQUES: dict[str, tuple[MitreTechnique, ...]] = {
     "Brute Force Attack": (T1110,),
     # One source touching many distinct destination ports is service discovery.
     "Potential Port Scan / High Volume": (T1046,),
+    # A guessed password that then worked is use of a valid account, not the
+    # guessing itself. T1110 deliberately stays off this rule: the Brute Force
+    # alert that almost always accompanies it already carries that label, and
+    # repeating it here would double-count one behaviour as two techniques in
+    # the correlation chain.
+    "Credential Compromise Suspected": (T1078,),
 }
 
 

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+
+{% block title %}Audit Log – SentinelAI{% endblock %}
+{% block page_title %}Audit Log{% endblock %}
+{% block page_subtitle %}Every administrator action, newest first — administrators only{% endblock %}
+
+{% block content %}
+
+<div class="glass-card rounded-xl p-4 mb-6 flex flex-wrap items-center gap-4">
+  <div class="w-9 h-9 rounded-lg bg-cyan-500/15 flex items-center justify-center flex-shrink-0">
+    <i class="fa-solid fa-clipboard-list text-cyan-400"></i>
+  </div>
+  <div class="flex-1 min-w-[240px]">
+    <h2 class="text-sm font-semibold text-white">Append-only history</h2>
+    <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">
+      Written in the same transaction as the change it records, so an admin action cannot
+      commit without its entry. Nothing in the app edits or deletes these rows, and the
+      username is stored on each entry so the history stays readable if an account is
+      later renamed or removed.
+    </p>
+  </div>
+
+  <form method="get" action="/audit-log" class="flex items-center gap-2">
+    <select name="action_filter"
+            aria-label="Filter by action"
+            onchange="this.form.submit()"
+            class="bg-sentinel-800/60 border border-blue-900/30 rounded-lg px-3 py-2 text-sm text-slate-300
+                   focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors">
+      <option value="">All actions</option>
+      {% for action in actions %}
+      <option value="{{ action }}" {% if action_filter == action %}selected{% endif %}>
+        {{ action_labels[action][0] }}
+      </option>
+      {% endfor %}
+    </select>
+    <noscript>
+      <button type="submit" class="px-3 py-2 rounded-lg text-xs font-semibold bg-blue-500/15 text-blue-400 border border-blue-500/30">
+        Filter
+      </button>
+    </noscript>
+  </form>
+
+  <span class="text-xs text-slate-500 font-mono whitespace-nowrap">
+    {{ shown }} shown{% if total > shown %} of {{ total }}{% endif %}
+  </span>
+</div>
+
+{% if total > shown %}
+<p class="text-xs text-slate-500 mb-4 flex items-center gap-1.5">
+  <i class="fa-solid fa-circle-info text-slate-600 text-[10px]"></i>
+  Showing the {{ page_size }} most recent entries.
+</p>
+{% endif %}
+
+<div class="glass-card rounded-xl overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-blue-900/40 bg-sentinel-900/60">
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">When</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Who</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Action</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Target</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Details</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-blue-900/20">
+        {% for row in rows %}
+        <tr class="alert-row">
+          <td class="px-4 py-3 text-xs text-slate-500 font-mono whitespace-nowrap">
+            {{ row.entry.timestamp.strftime('%Y-%m-%d %H:%M:%S') if row.entry.timestamp else '—' }}
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-300 font-medium whitespace-nowrap">
+            {{ row.entry.username or '—' }}
+            {% if row.entry.user_id %}<span class="text-slate-600 font-mono">#{{ row.entry.user_id }}</span>{% endif %}
+          </td>
+          <td class="px-4 py-3 whitespace-nowrap">
+            <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-200">
+              <i class="fa-solid {{ row.icon }} {{ row.colour }} text-[10px]"></i>
+              {{ row.label }}
+            </span>
+            <div class="text-[10px] text-slate-600 font-mono mt-0.5">{{ row.entry.action }}</div>
+          </td>
+          <td class="px-4 py-3 font-mono text-xs text-cyan-300 break-all">{{ row.entry.target or '—' }}</td>
+          <td class="px-4 py-3 text-xs text-slate-400 max-w-md break-words">{{ row.entry.details or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="5" class="text-center py-16 text-slate-500">
+            <i class="fa-solid fa-clipboard-list text-4xl opacity-15 mb-3 block"></i>
+            <p class="text-sm font-medium text-slate-400">
+              {% if action_filter %}No entries for that action{% else %}No admin actions recorded yet{% endif %}
+            </p>
+            <p class="text-xs mt-1">Settings changes, IP blocks and role changes appear here.</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

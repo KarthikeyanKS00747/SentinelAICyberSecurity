@@ -1,5 +1,8 @@
 fastapi
 uvicorn
+# ASGI WebSocket protocol support for uvicorn: without it the /ws/alerts
+# handshake 404s at runtime, even though the routes import fine.
+websockets
 sqlalchemy
 aiosqlite
 pydantic-settings
@@ -11,3 +14,8 @@ reportlab
 passlib[bcrypt]
 bcrypt<4.1
 itsdangerous
+# TOTP two-factor auth. qrcode[pil] pulls Pillow, which is what renders the
+# enrollment QR to a PNG for base64 embedding.
+pyotp
+qrcode[pil]
+scikit-learn

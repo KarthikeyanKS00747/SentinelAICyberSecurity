@@ -115,6 +115,12 @@
         Threat Intel
       </a>
 
+      <a href="/anomalies" id="nav-anomalies"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-brain w-4 text-center text-purple-400"></i>
+        ML Anomalies
+      </a>
+
       <a href="/correlation" id="nav-correlation"
          class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
         <i class="fa-solid fa-diagram-project w-4 text-center text-amber-400"></i>
@@ -139,6 +145,36 @@
         Settings
       </a>
 
+      <a href="/settings/2fa" id="nav-2fa"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-shield-halved w-4 text-center text-green-400"></i>
+        Two-Factor Auth
+        {% if current_user and current_user.totp_enabled %}
+        <span class="ml-auto text-[9px] font-bold text-green-400">ON</span>
+        {% endif %}
+      </a>
+
+      {# Admin-only navigation. Hidden outright rather than shown disabled:
+         these pages return a redirect for an analyst, so a visible link would
+         only ever bounce them back here. #}
+      {% if current_user and current_user.is_admin %}
+      <div class="pt-4 mt-4 border-t border-blue-900/30">
+        <p class="px-3 mb-2 text-xs font-semibold uppercase tracking-widest text-amber-500/70">Administration</p>
+
+        <a href="/users" id="nav-users"
+           class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+          <i class="fa-solid fa-user-shield w-4 text-center text-amber-400"></i>
+          Users
+        </a>
+
+        <a href="/audit-log" id="nav-audit"
+           class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+          <i class="fa-solid fa-clipboard-list w-4 text-center text-cyan-400"></i>
+          Audit Log
+        </a>
+      </div>
+      {% endif %}
+
       <div class="pt-4 mt-4 border-t border-blue-900/30">
         <p class="px-3 mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">System</p>
         <a href="/api/docs" target="_blank"
@@ -158,7 +194,13 @@
         </div>
         <div class="min-w-0 flex-1">
           <p id="current-username" class="text-sm font-semibold text-white truncate">{{ current_user.username }}</p>
-          <p class="text-[10px] text-slate-500 truncate">Signed in</p>
+          <p class="text-[10px] truncate">
+            {% if current_user.is_admin %}
+            <span id="current-role" class="text-amber-400 font-semibold">Administrator</span>
+            {% else %}
+            <span id="current-role" class="text-slate-500">Analyst</span>
+            {% endif %}
+          </p>
         </div>
       </div>
       <form method="post" action="/logout">
@@ -203,6 +245,34 @@
           <div id="global-spinner" class="htmx-indicator">
             <i class="fa-solid fa-circle-notch fa-spin text-blue-400 text-sm"></i>
           </div>
+          {# Demo-only: replays a fixture log that ships with the repo, one
+             line at a time, so the live push below is visibly demonstrable.
+             It does not tail or watch any real log source.
+
+             Admin-gated because a replay writes real log and alert rows, so
+             the button is not rendered at all for an analyst. #}
+          {% if current_user and current_user.is_admin %}
+          <button type="button" id="simulate-live-button"
+                  title="Demo only — replays the bundled test_correlation.log one line at a time to show live alert pushing. This is not real log tailing."
+                  class="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold
+                         bg-amber-500/10 text-amber-300 border border-amber-500/30
+                         hover:bg-amber-500/20 hover:text-amber-200 transition-colors
+                         disabled:opacity-40 disabled:cursor-not-allowed">
+            <i class="fa-solid fa-flask text-[10px]"></i>
+            <span id="simulate-live-label">Simulate log (demo)</span>
+          </button>
+          {% endif %}
+
+          <!-- Live feed indicator: green when the WebSocket is actually open,
+               red when it is not. Never optimistic — it is set from the
+               socket's own events, so a dead feed cannot look healthy. -->
+          <div id="live-indicator"
+               title="Live alert feed"
+               class="flex items-center gap-2 bg-sentinel-800/50 border border-blue-900/30 rounded-lg px-3 py-1.5">
+            <span id="live-dot" class="w-2 h-2 rounded-full bg-red-500"></span>
+            <span id="live-status" class="text-xs text-slate-400 font-mono">Disconnected</span>
+          </div>
+
           <div class="flex items-center gap-2 bg-sentinel-800/50 border border-blue-900/30 rounded-lg px-3 py-1.5">
             <i class="fa-solid fa-database text-blue-400 text-xs"></i>
             <span class="text-xs text-slate-400 font-mono">SQLite</span>
@@ -239,6 +309,10 @@
         '/settings':    'nav-settings',
         '/blocked-ips': 'nav-blocked',
         '/correlation': 'nav-correlation',
+        '/anomalies':   'nav-anomalies',
+        '/users':       'nav-users',
+        '/audit-log':   'nav-audit',
+        '/settings/2fa':'nav-2fa',
         '/map':         'nav-map',
       };
       const id = map[path] || (path.startsWith('/alerts') ? 'nav-alerts' : null);
@@ -323,6 +397,158 @@
         const ok = xhr.status >= 200 && xhr.status < 300;
         showToast(ok ? action.ok : action.fail, ok ? 'success' : 'error');
       });
+    })();
+
+    // ── LIVE ALERT FEED (WebSocket) ──────────────────────────────
+    // Receives alerts the moment the server creates them. Pages opt in to
+    // rendering by listening for the 'sentinel:live-alert' event on <body>;
+    // this block owns only the socket, the indicator and the toast, so a page
+    // without a listener still gets the notification and stays correct.
+    (function () {
+      const dot   = document.getElementById('live-dot');
+      const label = document.getElementById('live-status');
+      const box   = document.getElementById('live-indicator');
+      if (!dot || !label) return;
+
+      const RETRY_BASE_MS = 1000;
+      const RETRY_MAX_MS  = 30000;
+      const PING_EVERY_MS = 25000;
+
+      let socket = null;
+      let attempt = 0;
+      let pingTimer = null;
+      let retryTimer = null;
+      let leaving = false;   // suppress the reconnect storm during unload
+
+      const STATES = {
+        connected:    { dot: 'bg-green-400 animate-pulse', text: 'Connected',    tone: 'text-slate-400' },
+        connecting:   { dot: 'bg-amber-400 animate-pulse', text: 'Connecting…',  tone: 'text-slate-500' },
+        disconnected: { dot: 'bg-red-500',                 text: 'Disconnected', tone: 'text-red-300' },
+      };
+
+      function setState(name, detail) {
+        const s = STATES[name] || STATES.disconnected;
+        dot.className = 'w-2 h-2 rounded-full ' + s.dot;
+        label.className = 'text-xs font-mono ' + s.tone;
+        label.textContent = detail || s.text;
+        if (box) box.title = 'Live alert feed — ' + (detail || s.text);
+      }
+
+      function stopPing() {
+        if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+      }
+
+      function scheduleReconnect() {
+        if (leaving || retryTimer) return;
+        // Exponential backoff with jitter, capped, so a server that stays down
+        // is retried politely rather than hammered every second.
+        const delay = Math.min(RETRY_BASE_MS * Math.pow(2, attempt), RETRY_MAX_MS);
+        const jittered = Math.round(delay * (0.7 + Math.random() * 0.6));
+        attempt += 1;
+        setState('disconnected', 'Reconnecting in ' + Math.round(jittered / 1000) + 's');
+        retryTimer = setTimeout(function () { retryTimer = null; connect(); }, jittered);
+      }
+
+      function connect() {
+        if (leaving) return;
+        setState('connecting');
+        const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        try {
+          socket = new WebSocket(scheme + '//' + window.location.host + '/ws/alerts');
+        } catch (err) {
+          scheduleReconnect();
+          return;
+        }
+
+        socket.onopen = function () {
+          attempt = 0;
+          setState('connected');
+          stopPing();
+          // Browsers cannot send protocol-level pings, so the heartbeat is an
+          // application message the server echoes.
+          pingTimer = setInterval(function () {
+            if (socket && socket.readyState === WebSocket.OPEN) socket.send('ping');
+          }, PING_EVERY_MS);
+        };
+
+        socket.onmessage = function (event) {
+          if (event.data === 'pong') return;
+          let msg;
+          try { msg = JSON.parse(event.data); } catch (err) { return; }
+          if (!msg || !msg.type) return;
+
+          if (msg.type === 'alert') {
+            const sev = String(msg.severity || '').toUpperCase();
+            window.sentinelToast(
+              'New ' + sev + ' alert: ' + msg.threat_name + ' from ' + (msg.source_ip || 'unknown'),
+              sev === 'CRITICAL' || sev === 'HIGH' ? 'error' : 'info'
+            );
+            document.body.dispatchEvent(new CustomEvent('sentinel:live-alert', { detail: msg }));
+          } else if (msg.type === 'simulation') {
+            if (msg.state === 'started') {
+              window.sentinelToast('Simulation started — replaying ' + msg.filename, 'info');
+              setSimulating(true);
+            } else if (msg.state === 'finished') {
+              window.sentinelToast('Simulation finished — ' + msg.alerts + ' alert(s) raised', 'success');
+              setSimulating(false);
+            } else if (msg.state === 'failed') {
+              window.sentinelToast('Simulation failed', 'error');
+              setSimulating(false);
+            }
+          }
+        };
+
+        socket.onclose = function () {
+          stopPing();
+          socket = null;
+          scheduleReconnect();
+        };
+
+        socket.onerror = function () {
+          // onclose always follows, which is where the retry is scheduled.
+          if (socket && socket.readyState !== WebSocket.OPEN) setState('disconnected');
+        };
+      }
+
+      // ── SIMULATE BUTTON (demo only) ────────────────────────────
+      const simButton = document.getElementById('simulate-live-button');
+      const simLabel  = document.getElementById('simulate-live-label');
+
+      function setSimulating(running) {
+        if (!simButton || !simLabel) return;
+        simButton.disabled = running;
+        simLabel.textContent = running ? 'Simulating…' : 'Simulate log (demo)';
+      }
+
+      if (simButton) {
+        simButton.addEventListener('click', function () {
+          setSimulating(true);
+          fetch('/api/live/simulate', {
+            method: 'POST',
+            headers: { 'X-CSRF-Token': '{{ csrf_token }}' },
+            body: new URLSearchParams({ fixture: 'correlation' }),
+          }).then(function (res) {
+            if (res.ok) return;
+            setSimulating(false);
+            return res.json().then(function (body) {
+              window.sentinelToast(body.detail || 'Could not start the simulation', 'error');
+            }, function () {
+              window.sentinelToast('Could not start the simulation', 'error');
+            });
+          }).catch(function () {
+            setSimulating(false);
+            window.sentinelToast('Could not start the simulation', 'error');
+          });
+        });
+      }
+
+      window.addEventListener('beforeunload', function () {
+        leaving = true;
+        stopPing();
+        if (socket) socket.close();
+      });
+
+      connect();
     })();
   </script>
 
