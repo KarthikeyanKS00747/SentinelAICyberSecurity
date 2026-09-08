@@ -115,6 +115,12 @@
         Threat Intel
       </a>
 
+      <a href="/anomalies" id="nav-anomalies"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-brain w-4 text-center text-purple-400"></i>
+        ML Anomalies
+      </a>
+
       <a href="/correlation" id="nav-correlation"
          class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
         <i class="fa-solid fa-diagram-project w-4 text-center text-amber-400"></i>
@@ -239,6 +245,7 @@
         '/settings':    'nav-settings',
         '/blocked-ips': 'nav-blocked',
         '/correlation': 'nav-correlation',
+        '/anomalies':   'nav-anomalies',
         '/map':         'nav-map',
       };
       const id = map[path] || (path.startsWith('/alerts') ? 'nav-alerts' : null);

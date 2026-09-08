@@ -195,3 +195,28 @@ class ThreatIntel(Base):
     source: Mapped[str | None] = mapped_column(String(128))
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     added_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class AnomalyAlert(Base):
+    """One source IP flagged as an outlier by the ML anomaly detector.
+
+    Deliberately separate from ``Alert``: rule-based alerts state *which*
+    known rule fired and carry a severity, status and triage action, while
+    these say only "this IP does not look like its peers in this file".
+    Mixing the two would make an unsupervised, relative finding read as a
+    confirmed threat. Same reasoning that keeps GeoLocation/AbuseCheck out
+    of ThreatIntel.
+    """
+
+    __tablename__ = "anomaly_alerts"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    log_file_id: Mapped[int] = mapped_column(ForeignKey("log_files.id"), index=True)
+    source_ip: Mapped[str] = mapped_column(String(45), index=True)
+    anomaly_score: Mapped[float] = mapped_column(Float, default=0.0)
+    # JSON list of {feature, value, direction, deviation, label} describing the
+    # features that pushed this IP away from the file's population.
+    contributing_features: Mapped[str | None] = mapped_column(Text)
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    log_file: Mapped["LogFile"] = relationship()

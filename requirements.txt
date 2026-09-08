@@ -11,3 +11,4 @@ reportlab
 passlib[bcrypt]
 bcrypt<4.1
 itsdangerous
+scikit-learn

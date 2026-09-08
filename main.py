@@ -17,6 +17,7 @@ from database import AsyncSessionLocal, Base, engine
 from models import AppSetting, SeverityLevel, ThreatIntel
 from routers.abuse import router as abuse_router
 from routers.alerts import router as alerts_router
+from routers.anomalies import router as anomalies_router
 from routers.attack_map import router as attack_map_router
 from routers.auth import (
     AuthenticationRequired,
@@ -81,6 +82,21 @@ async def lifespan(_: FastAPI):
                 ]
             )
             await db.commit()
+
+        # Seeded per-key rather than in the block above, because that block
+        # only fires on a completely empty settings table -- an existing
+        # install would otherwise never receive these two rows.
+        anomaly_defaults = [
+            AppSetting(key="anomaly.contamination", value="0.1", value_type="float", description="Expected share of source IPs the Isolation Forest treats as outliers. Must be within (0, 0.5]."),
+            AppSetting(key="anomaly.min_distinct_ips", value="5", value_type="int", description="Distinct source IPs a log file needs before ML anomaly detection runs on it at all."),
+        ]
+        existing_keys = set(
+            (await db.scalars(select(AppSetting.key).where(AppSetting.key.startswith("anomaly.")))).all()
+        )
+        missing = [setting for setting in anomaly_defaults if setting.key not in existing_keys]
+        if missing:
+            db.add_all(missing)
+            await db.commit()
     yield
     await engine.dispose()
 
@@ -129,6 +145,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(alerts_router)
+app.include_router(anomalies_router)
 app.include_router(attack_map_router)
 app.include_router(settings_router)
 # API routers
