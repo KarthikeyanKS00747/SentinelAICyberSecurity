@@ -3,13 +3,15 @@
 import logging
 
 from fastapi import APIRouter, Depends, File, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import LogFile, LogFileStatus, ParsedLogEntry, User
+from models import Alert, LogFile, LogFileStatus, ParsedLogEntry, User
 from routers.auth import get_current_user, require_csrf
 from utils.anomaly_detector import run_anomaly_detection
 from utils.detector import run_threat_detection
+from utils.live_bus import broadcast_new_alerts
 from utils.log_parser import parse_log
 from utils.upload_handler import delete_saved_upload, validate_and_save_upload
 
@@ -73,6 +75,18 @@ async def upload_log(
         await db.rollback()
         log_file.status = LogFileStatus.FAILED
         await db.commit()
+
+    # Push the committed alerts to any open browser tab. Kept outside the block
+    # above so nothing about the live layer can turn a successful analysis into
+    # a failed upload; broadcast_new_alerts swallows its own failures too.
+    if alerts_generated:
+        try:
+            new_alerts = list(
+                (await db.scalars(select(Alert).where(Alert.log_file_id == log_file.id))).all()
+            )
+            await broadcast_new_alerts(new_alerts)
+        except Exception:
+            logger.exception("Could not broadcast alerts for log file %s", log_file.id)
 
     # Second pass: unsupervised ML outlier detection over the same entries.
     # It is strictly additive -- the rule-based alerts above are already

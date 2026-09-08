@@ -229,8 +229,13 @@
     </div>
   </div>
 
-  {% if stats.recent_alerts %}
-  <div class="overflow-x-auto">
+  <div id="recent-alerts-empty" class="{% if stats.recent_alerts %}hidden{% endif %} flex flex-col items-center justify-center py-12 text-slate-500">
+    <i class="fa-solid fa-shield-check text-4xl mb-3 opacity-20"></i>
+    <p class="text-sm font-medium">No alerts detected</p>
+    <p class="text-xs mt-1">Upload a log file via <a href="/upload" class="text-blue-400 hover:underline">Upload Logs</a></p>
+  </div>
+
+  <div id="recent-alerts-wrapper" class="overflow-x-auto{% if not stats.recent_alerts %} hidden{% endif %}">
     <table class="w-full text-sm">
       <thead>
         <tr class="border-b border-blue-900/30">
@@ -241,7 +246,7 @@
           <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 pb-3">Status</th>
         </tr>
       </thead>
-      <tbody class="divide-y divide-blue-900/20">
+      <tbody class="divide-y divide-blue-900/20" id="recent-alerts-tbody">
         {% for alert in stats.recent_alerts %}
         <tr class="alert-row">
           <td class="py-3 pr-4 font-medium text-white">{{ alert.threat_name }}</td>
@@ -278,13 +283,6 @@
       </tbody>
     </table>
   </div>
-  {% else %}
-  <div class="flex flex-col items-center justify-center py-12 text-slate-500">
-    <i class="fa-solid fa-shield-check text-4xl mb-3 opacity-20"></i>
-    <p class="text-sm font-medium">No alerts detected</p>
-    <p class="text-xs mt-1">Upload a log file via <a href="/upload" class="text-blue-400 hover:underline">Upload Logs</a></p>
-  </div>
-  {% endif %}
 </div>
 
 {% endblock %}
@@ -392,5 +390,94 @@
     }).render();
   })();
   {% endif %}
+
+  // -- LIVE ALERT ROWS ------------------------------------------------
+  // base.html owns the WebSocket, the indicator and the toast; this only
+  // renders the pushed alert into the Recent Alerts table. A vanilla insert
+  // rather than an HTMX refresh: re-fetching /dashboard would re-run every
+  // aggregate query and rebuild both ApexCharts for one new row.
+  //
+  // Scope note: the stat tiles and charts above are rendered server-side and
+  // are NOT updated by a push -- they still reflect the moment the page
+  // loaded, and refresh on the next navigation.
+  (function () {
+    const tbody   = document.getElementById('recent-alerts-tbody');
+    const wrapper = document.getElementById('recent-alerts-wrapper');
+    const empty   = document.getElementById('recent-alerts-empty');
+    if (!tbody) return;
+
+    const MAX_ROWS = 10;   // matches the "Latest 10 detections" subtitle
+
+    // Guards against rendering the same push twice. Keyed on the alert's
+    // identity, NOT its id alone: the rule engine deletes and recreates a
+    // file's alerts on every detection pass, and SQLite hands the freed
+    // rowids straight back out, so two genuinely different alerts in one
+    // simulation can arrive carrying the same id.
+    const seen = new Set();
+    let inserted = 0;
+
+    const SEVERITY_BADGE = {
+      critical: 'badge-critical px-2 py-0.5 rounded-full text-xs font-bold bg-red-500/20 text-red-400 border border-red-500/30',
+      high:     'px-2 py-0.5 rounded-full text-xs font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30',
+      medium:   'px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30',
+      low:      'px-2 py-0.5 rounded-full text-xs font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30',
+    };
+    const STATUS_BADGE = {
+      open:          'px-2 py-0.5 rounded text-xs font-medium bg-blue-500/15 text-blue-300',
+      investigating: 'px-2 py-0.5 rounded text-xs font-medium bg-amber-500/15 text-amber-300',
+      resolved:      'px-2 py-0.5 rounded text-xs font-medium bg-green-500/15 text-green-300',
+    };
+
+    // Every cell is built with textContent, never innerHTML: threat names and
+    // source IPs originate in an uploaded log file and are not trusted markup.
+    function cell(classes, text) {
+      const td = document.createElement('td');
+      td.className = classes;
+      td.textContent = text;
+      return td;
+    }
+
+    function badgeCell(classes, badgeClass, text) {
+      const td = document.createElement('td');
+      td.className = classes;
+      const span = document.createElement('span');
+      span.className = badgeClass;
+      span.textContent = text;
+      td.appendChild(span);
+      return td;
+    }
+
+    document.body.addEventListener('sentinel:live-alert', function (evt) {
+      const alert = evt.detail || {};
+      const key = JSON.stringify([alert.id, alert.threat_name, alert.source_ip]);
+      if (seen.has(key)) return;   // already shown
+      seen.add(key);
+
+      const severity = String(alert.severity || 'low').toLowerCase();
+      const status = String(alert.status || 'open').toLowerCase();
+      const score = Number(alert.risk_score || 0);
+
+      const row = document.createElement('tr');
+      row.className = 'alert-row htmx-added';
+      row.id = 'live-alert-row-' + (++inserted);
+      row.dataset.alertId = alert.id;
+
+      row.appendChild(cell('py-3 pr-4 font-medium text-white', alert.threat_name || 'Unknown'));
+      row.appendChild(badgeCell('py-3 pr-4',
+        SEVERITY_BADGE[severity] || SEVERITY_BADGE.low, severity.toUpperCase()));
+      row.appendChild(cell('py-3 pr-4 font-mono text-xs text-slate-300', alert.source_ip || '—'));
+
+      const scoreClass = score >= 80 ? 'text-red-400' : score >= 50 ? 'text-amber-400' : 'text-green-400';
+      row.appendChild(cell('py-3 pr-4 font-semibold ' + scoreClass, String(Math.round(score))));
+      row.appendChild(badgeCell('py-3',
+        STATUS_BADGE[status] || STATUS_BADGE.open, status.toUpperCase()));
+
+      tbody.insertBefore(row, tbody.firstChild);
+      while (tbody.children.length > MAX_ROWS) tbody.removeChild(tbody.lastChild);
+
+      if (empty) empty.classList.add('hidden');
+      if (wrapper) wrapper.classList.remove('hidden');
+    });
+  })();
 </script>
 {% endblock %}

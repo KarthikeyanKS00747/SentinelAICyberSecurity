@@ -1,5 +1,8 @@
 fastapi
 uvicorn
+# ASGI WebSocket protocol support for uvicorn: without it the /ws/alerts
+# handshake 404s at runtime, even though the routes import fine.
+websockets
 sqlalchemy
 aiosqlite
 pydantic-settings
