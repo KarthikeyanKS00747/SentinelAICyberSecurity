@@ -1,0 +1,444 @@
+{# ────────────────────────────────────────────────────────────────────────────
+   Single source of truth for SentinelAI's palette, typography and shared
+   component styles.
+
+   Included by every page that owns a <head>: base.html (all sidebar pages),
+   login.html and home.html (both standalone). Nothing below is page-specific,
+   so a colour only ever has to change here.
+
+   HOW IT WORKS
+   ------------
+   Every colour is a CSS custom property holding a bare "R G B" triple, which
+   the Tailwind config below wraps as `rgb(var(--x) / <alpha-value>)`. Keeping
+   the channels unwrapped is what lets the opacity modifiers already scattered
+   through the templates (bg-sentinel-800/60, border-blue-900/30, ...) keep
+   working after the repaint.
+
+   Four Tailwind scales are re-pointed at those variables, so the whole app
+   repaints without touching a single template:
+
+     slate / sentinel -> neutral charcoal ramp (structure)
+     blue             -> burnt-orange ember ramp (accent, links, focus, logo)
+     cyan             -> warm gold ramp (secondary accent)
+     purple           -> plum ramp (the "AI output" marker)
+
+   DELIBERATELY NOT REBRANDED: red / orange / amber / green. Those carry
+   meaning -- CRITICAL / HIGH / MEDIUM severity and success -- so their hues
+   stay put, and in the dark theme their values are byte-for-byte Tailwind's
+   own. Only their light text steps (200/300/400) are variable-backed, so the
+   light theme can darken them enough to be legible on a pale chip without
+   changing what any of them mean. LOW severity is drawn from the slate ramp
+   and therefore stays grey in every theme.
+
+   NEUTRAL RAMP ORDERING: in the dark themes the ramp runs light (n-50) to
+   dark (n-950), exactly like Tailwind's own. In the light theme it is
+   REVERSED, so that `text-slate-400` still means "muted text" and
+   `bg-sentinel-950` still means "page background". Read the ramp as distance
+   from the page background, not as absolute lightness.
+   ──────────────────────────────────────────────────────────────────────── #}
+
+{# Applied before anything paints, so a non-default theme never flashes the
+   default one first. Kept inline and dependency-free for that reason: an
+   external file is a second round trip during which the wrong theme shows. #}
+<script>
+  (function () {
+    var THEMES = ['dark', 'light', 'contrast'];
+    var stored = null;
+    try { stored = localStorage.getItem('sentinelai.theme'); } catch (e) { stored = null; }
+    var theme = THEMES.indexOf(stored) !== -1 ? stored : 'dark';
+    document.documentElement.setAttribute('data-theme', theme);
+    // Tailwind's darkMode:'class' hook. 'contrast' is a dark scheme too.
+    document.documentElement.classList.toggle('dark', theme !== 'light');
+  })();
+</script>
+
+<!-- Tailwind CSS CDN (v3 Play CDN) -->
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  // Every value points at a CSS variable, so flipping data-theme on <html>
+  // repaints the utilities without regenerating a single class.
+  var rgb = function (name) { return 'rgb(var(' + name + ') / <alpha-value>)'; };
+  var ramp = function (prefix) {
+    var out = {};
+    ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '950'].forEach(function (step) {
+      out[step] = rgb('--' + prefix + '-' + step);
+    });
+    return out;
+  };
+
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        colors: {
+          // Structural neutrals. Both names resolve to the same ramp; the
+          // sentinel-* aliases are the surface steps the templates already use.
+          slate: ramp('n'),
+          sentinel: Object.assign(ramp('n'), {
+            950:    rgb('--surface-0'),   // page background
+            900:    rgb('--surface-1'),   // sidebar, group headers
+            800:    rgb('--surface-2'),   // inputs, inset panels
+            700:    rgb('--surface-3'),
+            600:    rgb('--surface-4'),
+            accent: rgb('--a-500'),
+            cyan:   rgb('--g-500'),
+            green:  '#10b981',
+            amber:  '#f59e0b',
+            red:    '#ef4444',
+          }),
+          blue:   ramp('a'),   // burnt orange
+          cyan:   ramp('g'),   // warm gold
+          purple: ramp('p'),   // plum
+          // Semantic hues keep their meaning in every theme, so only the light
+          // text steps are variable-backed: `text-red-400` on a `bg-red-500/15`
+          // chip is legible on a dark ground and washed out on a light one.
+          // The dark values below are Tailwind's own, unchanged.
+          red:    { 200: rgb('--sem-red-200'),    300: rgb('--sem-red-300'),    400: rgb('--sem-red-400') },
+          orange: { 200: rgb('--sem-orange-200'), 300: rgb('--sem-orange-300'), 400: rgb('--sem-orange-400') },
+          amber:  { 200: rgb('--sem-amber-200'),  300: rgb('--sem-amber-300'),  400: rgb('--sem-amber-400') },
+          green:  { 200: rgb('--sem-green-200'),  300: rgb('--sem-green-300'),  400: rgb('--sem-green-400') },
+          // Remapped so `text-white` means "strongest foreground", which is
+          // near-black once the light theme is active.
+          white:  rgb('--fg-strong'),
+        },
+        fontFamily: {
+          sans: ['Inter', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        boxShadow: {
+          glow:       '0 0 20px rgb(var(--a-500) / var(--glow-alpha))',
+          'glow-red': '0 0 20px rgba(239,68,68,0.25)',
+        },
+      },
+    },
+  };
+</script>
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+<style>
+  /* ── DARK (default): near-black charcoal + burnt orange ─────────────── */
+  :root,
+  [data-theme="dark"] {
+    /* neutral ramp - warm-grey charcoal, no blue tint */
+    --n-50:  250 250 249;
+    --n-100: 242 242 240;
+    --n-200: 228 228 225;
+    --n-300: 203 203 199;
+    --n-400: 166 166 161;
+    --n-500: 128 128 123;
+    --n-600: 94 94 90;
+    --n-700: 66 66 63;
+    --n-800: 45 45 43;
+    --n-900: 30 30 29;
+    --n-950: 18 18 17;
+
+    /* accent ramp - burnt orange / ember (replaces blue) */
+    --a-50:  254 243 232;
+    --a-100: 253 230 205;
+    --a-200: 251 206 155;
+    --a-300: 249 178 108;
+    --a-400: 244 147 60;
+    --a-500: 226 113 29;
+    --a-600: 194 87 15;
+    --a-700: 154 67 12;
+    --a-800: 112 50 12;
+    --a-900: 74 33 9;
+    --a-950: 42 18 5;
+
+    /* secondary ramp - warm gold (replaces cyan) */
+    --g-50:  253 248 235;
+    --g-100: 250 240 213;
+    --g-200: 245 226 172;
+    --g-300: 236 208 138;
+    --g-400: 224 187 99;
+    --g-500: 212 165 60;
+    --g-600: 179 134 42;
+    --g-700: 140 104 33;
+    --g-800: 102 76 26;
+    --g-900: 68 51 18;
+    --g-950: 38 28 10;
+
+    /* AI marker ramp - plum (replaces purple) */
+    --p-50:  250 238 247;
+    --p-100: 245 222 240;
+    --p-200: 236 198 224;
+    --p-300: 221 163 205;
+    --p-400: 201 122 180;
+    --p-500: 178 92 156;
+    --p-600: 150 72 127;
+    --p-700: 118 56 100;
+    --p-800: 88 41 74;
+    --p-900: 67 26 56;
+    --p-950: 40 15 33;
+
+    /* surfaces, foreground, chrome */
+    --surface-0: 12 12 11;    /* page background */
+    --surface-1: 22 22 21;    /* sidebar / headers */
+    --surface-2: 32 32 30;    /* inputs / inset panels */
+    --surface-3: 45 45 42;
+    --surface-4: 62 62 58;
+    --fg-strong: 255 255 255;
+
+    --panel-bg: 26 26 24;
+    --panel-alpha: 0.72;
+    --panel-border: 226 113 29;
+    --panel-border-alpha: 0.16;
+    --border-width: 1px;
+    --glow-alpha: 0.25;
+    --row-hover-alpha: 0.07;
+    --grid-alpha: 0.05;
+    --focus-ring-width: 1px;
+
+    /* Semantic text steps. These are Tailwind's own red/orange/amber/green
+       values -- severity reads exactly as it did before the repaint. */
+    --sem-red-200:    254 202 202;
+    --sem-red-300:    252 165 165;
+    --sem-red-400:    248 113 113;
+    --sem-orange-200: 254 215 170;
+    --sem-orange-300: 253 186 116;
+    --sem-orange-400: 251 146 60;
+    --sem-amber-200:  253 230 138;
+    --sem-amber-300:  252 211 77;
+    --sem-amber-400:  251 191 36;
+    --sem-green-200:  187 247 208;
+    --sem-green-300:  134 239 172;
+    --sem-green-400:  74 222 128;
+  }
+
+  /* ── LIGHT: neutral ramp reversed, accents darkened to stay readable ── */
+  [data-theme="light"] {
+    --n-50:  24 24 23;
+    --n-100: 38 38 36;
+    --n-200: 55 55 52;
+    --n-300: 78 78 74;
+    --n-400: 100 100 95;
+    --n-500: 122 122 117;
+    --n-600: 150 150 145;
+    --n-700: 190 190 185;
+    --n-800: 216 216 212;
+    --n-900: 233 233 229;
+    --n-950: 246 246 243;
+
+    --a-50:  42 18 5;
+    --a-100: 74 33 9;
+    --a-200: 112 50 12;
+    --a-300: 146 62 10;
+    --a-400: 176 76 12;
+    --a-500: 199 88 16;
+    --a-600: 218 104 24;
+    --a-700: 236 137 52;
+    --a-800: 247 186 128;
+    --a-900: 251 218 187;
+    --a-950: 254 240 227;
+
+    --g-50:  38 28 10;
+    --g-100: 68 51 18;
+    --g-200: 102 76 26;
+    --g-300: 128 95 30;
+    --g-400: 150 112 35;
+    --g-500: 173 132 44;
+    --g-600: 196 154 60;
+    --g-700: 219 186 116;
+    --g-800: 236 214 165;
+    --g-900: 245 233 206;
+    --g-950: 252 247 236;
+
+    --p-50:  40 15 33;
+    --p-100: 67 26 56;
+    --p-200: 88 41 74;
+    --p-300: 112 52 94;
+    --p-400: 140 66 118;
+    --p-500: 163 80 139;
+    --p-600: 186 107 162;
+    --p-700: 210 156 192;
+    --p-800: 231 198 220;
+    --p-900: 242 224 237;
+    --p-950: 250 240 247;
+
+    --surface-0: 246 245 242;
+    --surface-1: 255 255 255;
+    --surface-2: 237 236 232;
+    --surface-3: 224 223 218;
+    --surface-4: 205 204 198;
+    --fg-strong: 24 24 23;
+
+    --panel-bg: 255 255 255;
+    --panel-alpha: 0.88;
+    --panel-border: 168 76 16;
+    --panel-border-alpha: 0.22;
+    --border-width: 1px;
+    --glow-alpha: 0.18;
+    --row-hover-alpha: 0.07;
+    --grid-alpha: 0.06;
+    --focus-ring-width: 1px;
+
+    /* Same hues, darkened until they clear their own pale tinted chip on a
+       light ground. Red still reads as red; only the lightness moves. */
+    --sem-red-200:    127 29 29;
+    --sem-red-300:    153 27 27;
+    --sem-red-400:    185 28 28;
+    --sem-orange-200: 124 45 18;
+    --sem-orange-300: 154 52 18;
+    --sem-orange-400: 194 65 12;
+    --sem-amber-200:  120 53 15;
+    --sem-amber-300:  146 64 14;
+    --sem-amber-400:  180 83 9;
+    --sem-green-200:  20 83 45;
+    --sem-green-300:  22 101 52;
+    --sem-green-400:  21 128 61;
+  }
+
+  /* ── HIGH CONTRAST: pure black ground, near-white text, thick borders ──
+     Every foreground step is pushed to the light end of the ramp so nothing
+     lands in the low-contrast middle; surfaces sit at or near #000; the
+     accent is brightened until it clears WCAG AA on black. Borders and focus
+     rings widen, and the glass blur is dropped -- a translucent panel edge is
+     the first thing to disappear for a low-vision reader. */
+  [data-theme="contrast"] {
+    --n-50:  255 255 255;
+    --n-100: 255 255 255;
+    --n-200: 255 255 255;
+    --n-300: 252 252 252;
+    --n-400: 242 242 242;
+    --n-500: 230 230 230;
+    --n-600: 212 212 212;
+    --n-700: 150 150 150;
+    --n-800: 90 90 90;
+    --n-900: 40 40 40;
+    --n-950: 0 0 0;
+
+    --a-50:  255 244 232;
+    --a-100: 255 236 214;
+    --a-200: 255 222 186;
+    --a-300: 255 205 152;
+    --a-400: 255 178 92;
+    --a-500: 255 154 46;
+    --a-600: 255 138 20;
+    --a-700: 240 122 10;
+    --a-800: 200 100 8;
+    --a-900: 150 74 6;
+    --a-950: 92 45 4;
+
+    --g-50:  255 251 240;
+    --g-100: 255 247 224;
+    --g-200: 255 240 196;
+    --g-300: 255 230 158;
+    --g-400: 255 216 110;
+    --g-500: 255 203 66;
+    --g-600: 245 188 40;
+    --g-700: 205 155 30;
+    --g-800: 160 120 22;
+    --g-900: 112 84 16;
+    --g-950: 64 48 10;
+
+    --p-50:  255 240 252;
+    --p-100: 255 230 249;
+    --p-200: 253 213 242;
+    --p-300: 250 186 232;
+    --p-400: 244 150 218;
+    --p-500: 236 118 203;
+    --p-600: 220 92 185;
+    --p-700: 180 72 150;
+    --p-800: 136 52 112;
+    --p-900: 96 34 78;
+    --p-950: 56 18 45;
+
+    --surface-0: 0 0 0;
+    --surface-1: 0 0 0;
+    --surface-2: 18 18 18;
+    --surface-3: 32 32 32;
+    --surface-4: 56 56 56;
+    --fg-strong: 255 255 255;
+
+    --panel-bg: 0 0 0;
+    --panel-alpha: 1;
+    --panel-border: 255 255 255;
+    --panel-border-alpha: 0.85;
+    --border-width: 2px;
+    --glow-alpha: 0;
+    --row-hover-alpha: 0.22;
+    --grid-alpha: 0.10;
+    --focus-ring-width: 3px;
+
+    /* Brightened against the pure-black ground while keeping each hue. */
+    --sem-red-200:    255 214 214;
+    --sem-red-300:    255 186 186;
+    --sem-red-400:    255 138 138;
+    --sem-orange-200: 255 226 194;
+    --sem-orange-300: 255 202 148;
+    --sem-orange-400: 255 168 88;
+    --sem-amber-200:  255 240 186;
+    --sem-amber-300:  255 226 130;
+    --sem-amber-400:  255 208 66;
+    --sem-green-200:  206 255 226;
+    --sem-green-300:  160 250 198;
+    --sem-green-400:  108 240 164;
+  }
+
+  body { background-color: rgb(var(--surface-0)); }
+
+  /* Glassmorphism cards. High contrast opts out of both the blur and the
+     translucency through its --panel-* values above. */
+  .glass-card {
+    background: rgb(var(--panel-bg) / var(--panel-alpha));
+    backdrop-filter: blur(12px);
+    border: var(--border-width) solid rgb(var(--panel-border) / var(--panel-border-alpha));
+  }
+  [data-theme="contrast"] .glass-card { backdrop-filter: none; }
+
+  /* Sidebar link transitions */
+  .nav-link { transition: all 0.2s ease; }
+  .nav-link:hover { transform: translateX(4px); }
+  .nav-link.active {
+    background: linear-gradient(90deg, rgb(var(--a-500) / 0.22), transparent);
+    border-left: 3px solid rgb(var(--a-500));
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: rgb(var(--surface-1)); }
+  ::-webkit-scrollbar-thumb { background: rgb(var(--surface-4)); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgb(var(--a-500)); }
+
+  /* Gradient wash on stat cards */
+  .stat-card { position: relative; overflow: hidden; }
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgb(var(--a-500) / 0.08), rgb(var(--g-500) / 0.04));
+    pointer-events: none;
+  }
+  [data-theme="contrast"] .stat-card::before { background: none; }
+
+  /* Table row hover */
+  .alert-row { transition: background-color 0.15s ease; }
+  .alert-row:hover { background-color: rgb(var(--a-500) / var(--row-hover-alpha)) !important; }
+
+  /* Faint grid backdrop shared by the standalone login and home pages */
+  .sentinel-grid {
+    background-image:
+      linear-gradient(rgb(var(--a-500) / var(--grid-alpha)) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--a-500) / var(--grid-alpha)) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  /* Pulse on critical badges. Severity red is fixed on purpose. */
+  @keyframes pulse-red {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+    50%      { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
+  }
+  .badge-critical { animation: pulse-red 2s infinite; }
+
+  /* Visible keyboard focus, widened in the high-contrast theme */
+  a:focus-visible,
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible {
+    outline: var(--focus-ring-width) solid rgb(var(--a-400));
+    outline-offset: 2px;
+  }
+</style>

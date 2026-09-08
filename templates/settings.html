@@ -25,6 +25,55 @@
     </span>
   </div>
 
+  {# ── DISPLAY THEME ────────────────────────────────────────────────────
+     Client-side only, on purpose. AppSetting is a single shared table read by
+     the detector and the AI layer; a per-browser display preference stored
+     there would follow one analyst's choice onto every other analyst's
+     screen. This lives in localStorage and is applied by the inline boot
+     script in partials/theme.html before first paint. #}
+  <div class="glass-card rounded-xl overflow-hidden mb-6">
+    <div class="px-4 py-3 bg-sentinel-900/60 border-b border-blue-900/40 flex items-center gap-2.5">
+      <i class="fa-solid fa-palette text-blue-400 text-sm"></i>
+      <div>
+        <h3 class="text-sm font-semibold text-white">Display</h3>
+        <p class="text-[11px] text-slate-500">Appearance only &mdash; detection behaviour is unaffected.</p>
+      </div>
+      <span class="ml-auto text-[10px] font-semibold uppercase tracking-widest text-slate-500
+                   border border-blue-900/40 rounded px-2 py-1">
+        this browser only
+      </span>
+    </div>
+
+    <div class="px-4 py-4">
+      <p class="text-xs font-semibold text-slate-300 mb-1">Theme</p>
+      <p class="text-[11px] text-slate-500 mb-3 leading-relaxed">
+        Applies instantly and is remembered on this device. It is not saved to the
+        database, so it does not change what any other analyst sees.
+      </p>
+
+      <div role="radiogroup" aria-label="Display theme"
+           id="theme-options" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {% for value, label, icon, blurb in [
+          ('dark',     'Dark',          'fa-moon',      'Charcoal ground, burnt-orange accent. The default.'),
+          ('light',    'Light',         'fa-sun',       'Light paper ground for bright rooms.'),
+          ('contrast', 'High contrast', 'fa-circle-half-stroke', 'Black on near-white text, thicker borders and focus rings.')
+        ] %}
+        <button type="button" role="radio" aria-checked="false"
+                class="theme-option text-left rounded-lg border border-blue-900/40 bg-sentinel-800/60
+                       px-3 py-3 transition-colors hover:border-blue-500/50"
+                data-theme-value="{{ value }}">
+          <span class="flex items-center gap-2 text-xs font-semibold text-slate-200">
+            <i class="fa-solid {{ icon }} text-blue-400 text-xs"></i>
+            {{ label }}
+            <i class="theme-tick fa-solid fa-circle-check text-blue-400 text-xs ml-auto invisible"></i>
+          </span>
+          <span class="block text-[11px] text-slate-500 mt-1.5 leading-relaxed">{{ blurb }}</span>
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
   {% for group in groups %}
   <div class="glass-card rounded-xl overflow-hidden mb-6">
 
@@ -65,5 +114,46 @@
       evt.detail.isError = false;
     }
   });
+
+  // ── THEME SWITCHER ──────────────────────────────────────────────────
+  // Writes localStorage and repaints immediately; partials/theme.html reads
+  // the same key on every subsequent page load, before first paint.
+  (function () {
+    var KEY = 'sentinelai.theme';
+    var VALID = ['dark', 'light', 'contrast'];
+    var buttons = Array.prototype.slice.call(document.querySelectorAll('.theme-option'));
+    if (!buttons.length) return;
+
+    function current() {
+      var stored;
+      try { stored = localStorage.getItem(KEY); } catch (e) { stored = null; }
+      return VALID.indexOf(stored) !== -1 ? stored : 'dark';
+    }
+
+    function paintSelection(active) {
+      buttons.forEach(function (btn) {
+        var on = btn.dataset.themeValue === active;
+        btn.setAttribute('aria-checked', on ? 'true' : 'false');
+        btn.classList.toggle('border-blue-500/60', on);
+        btn.classList.toggle('bg-blue-500/10', on);
+        btn.classList.toggle('border-blue-900/40', !on);
+        btn.classList.toggle('bg-sentinel-800/60', !on);
+        btn.querySelector('.theme-tick').classList.toggle('invisible', !on);
+      });
+    }
+
+    function apply(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      document.documentElement.classList.toggle('dark', theme !== 'light');
+      try { localStorage.setItem(KEY, theme); } catch (e) { /* private mode: session-only */ }
+      paintSelection(theme);
+      if (window.sentinelToast) window.sentinelToast('Theme set to ' + theme, 'success');
+    }
+
+    buttons.forEach(function (btn) {
+      btn.addEventListener('click', function () { apply(btn.dataset.themeValue); });
+    });
+    paintSelection(current());
+  })();
 </script>
 {% endblock %}

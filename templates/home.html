@@ -1,63 +1,120 @@
-{% extends "base.html" %}
+{# Standalone landing page: no sidebar, no top bar, just the module tiles.
 
-{% block title %}Home – SentinelAI{% endblock %}
-{% block page_title %}Home{% endblock %}
-{% block page_subtitle %}Pick a module to get started{% endblock %}
+   Deliberately does NOT extend base.html -- same pattern as login.html. The
+   sidebar is the app's navigation, and this page IS the navigation, so
+   carrying both would duplicate every destination. Every other page keeps the
+   sidebar unchanged.
 
-{% block content %}
+   The palette, Tailwind config and shared component styles come from the same
+   include base.html uses, so the landing page repaints with the rest of the
+   app and needs no colours of its own. #}
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="SentinelAI – Lightweight SIEM dashboard for log analysis and threat detection." />
+  <title>SentinelAI SIEM</title>
 
-<!-- ── WELCOME ─────────────────────────────────────────────────── -->
-<div class="glass-card rounded-xl p-6 mb-8 flex items-start gap-4">
-  <div class="flex items-center justify-center w-12 h-12 rounded-xl
-              bg-gradient-to-br from-blue-500 to-cyan-500 shadow-glow flex-shrink-0">
-    <i class="fa-solid fa-shield-halved text-white text-xl"></i>
-  </div>
-  <div>
-    <h2 class="text-lg font-semibold text-white">
-      Welcome back{% if current_user %}, {{ current_user.username }}{% endif %}
-    </h2>
-    <p class="text-sm text-slate-400 mt-1 leading-relaxed">
+  {# Same palette source as every other page. #}
+  {% include "partials/theme.html" %}
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <style>
+    /* The whole tile is the link, so the hover affordance is driven from the
+       anchor rather than from an inner element. */
+    .tile { transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease; }
+    .tile:hover { transform: translateY(-3px); }
+  </style>
+</head>
+
+{% set csrf_token = request.session.get('csrf_token', '') %}
+<body class="font-sans text-slate-200 min-h-screen flex flex-col sentinel-grid">
+
+  <!-- ── HEADER ──────────────────────────────────────────────────── -->
+  <header class="w-full max-w-6xl mx-auto px-6 pt-8 pb-2 flex items-center justify-between gap-4">
+
+    <div class="flex items-center gap-3">
+      <div class="flex items-center justify-center w-11 h-11 rounded-xl
+                  bg-gradient-to-br from-blue-500 to-cyan-500 shadow-glow flex-shrink-0">
+        <i class="fa-solid fa-shield-halved text-white text-lg"></i>
+      </div>
+      <div>
+        <h1 class="text-xl font-bold tracking-wide leading-tight">
+          <span class="text-white">Sentinel</span><span class="text-blue-400">AI</span>
+        </h1>
+        <p class="text-slate-500 text-xs font-medium">SIEM Platform</p>
+      </div>
+    </div>
+
+    {% if current_user %}
+    <div class="flex items-center gap-3">
+      <div class="hidden sm:block text-right">
+        <p id="current-username" class="text-sm font-semibold text-white leading-tight">{{ current_user.username }}</p>
+        <p class="text-[10px] text-slate-500">Signed in</p>
+      </div>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit" id="logout-button"
+                class="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold
+                       bg-red-500/10 text-red-300 border border-red-500/30
+                       hover:bg-red-500/20 hover:text-red-200 transition-colors">
+          <i class="fa-solid fa-right-from-bracket text-[10px]"></i>
+          Sign out
+        </button>
+      </form>
+    </div>
+    {% endif %}
+  </header>
+
+  <!-- ── MODULE TILES ────────────────────────────────────────────── -->
+  <main class="w-full max-w-6xl mx-auto px-6 py-8 flex-1 flex flex-col justify-center">
+
+    <p class="text-sm text-slate-400 leading-relaxed max-w-2xl mb-7">
+      Welcome back{% if current_user %}, <span class="text-white font-medium">{{ current_user.username }}</span>{% endif %}.
       SentinelAI analyses uploaded log files, detects threats with rule-based
       logic, and explains them with a local LLM. Everything runs on this machine.
     </p>
-  </div>
-</div>
 
-<!-- ── MODULE TILES ────────────────────────────────────────────── -->
-{% set modules = [
-  ('/dashboard',   'fa-gauge-high',        'text-blue-400',   'bg-blue-500/15',   'Dashboard',    'Aggregated statistics, severity breakdown and charts.'),
-  ('/alerts',      'fa-triangle-exclamation','text-amber-400','bg-amber-500/15',  'Alerts',       'Triage detected threats, explain them and block source IPs.'),
-  ('/upload',      'fa-cloud-arrow-up',    'text-green-400',  'bg-green-500/15',  'Upload Logs',  'Submit a .log, .txt or .csv file for parsing and analysis.'),
-  ('/threat-intel','fa-crosshairs',        'text-red-400',    'bg-red-500/15',    'Threat Intel', 'Known malicious indicators from the local threat feed.'),
-  ('/correlation', 'fa-diagram-project',   'text-amber-400',  'bg-amber-500/15',  'Correlation',  'Source IPs showing multi-stage activity across attack types.'),
-  ('/blocked-ips', 'fa-ban',               'text-red-400',    'bg-red-500/15',    'Blocked IPs',  'Audit trail of every manual block applied by an analyst.'),
-  ('/settings',    'fa-sliders',           'text-cyan-400',   'bg-cyan-500/15',   'Settings',     'Tune detection thresholds and AI behaviour at runtime.')
-] %}
+    {% set modules = [
+      ('/dashboard',   'fa-gauge-high',          'Dashboard',    'Aggregated statistics, severity breakdown and charts.'),
+      ('/alerts',      'fa-triangle-exclamation','Alerts',       'Triage detected threats, explain them and block source IPs.'),
+      ('/upload',      'fa-cloud-arrow-up',      'Upload Logs',  'Submit a .log, .txt or .csv file for parsing and analysis.'),
+      ('/threat-intel','fa-crosshairs',          'Threat Intel', 'Known malicious indicators from the local threat feed.'),
+      ('/correlation', 'fa-diagram-project',     'Correlation',  'Source IPs showing multi-stage activity across attack types.'),
+      ('/map',         'fa-earth-americas',      'Attack Map',   'Geographic origin of alert source IPs on a world map.'),
+      ('/blocked-ips', 'fa-ban',                 'Blocked IPs',  'Audit trail of every manual block applied by an analyst.'),
+      ('/settings',    'fa-sliders',             'Settings',     'Tune detection thresholds, AI behaviour and display theme.')
+    ] %}
 
-<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
-  {% for href, icon, icon_colour, icon_bg, name, description in modules %}
-  <a href="{{ href }}"
-     class="stat-card glass-card rounded-xl p-5 group transition-all duration-200
-            hover:border-blue-500/40 hover:shadow-glow">
-    <div class="flex items-start gap-3.5">
-      <div class="w-11 h-11 rounded-lg {{ icon_bg }} flex items-center justify-center flex-shrink-0">
-        <i class="fa-solid {{ icon }} {{ icon_colour }} text-lg"></i>
-      </div>
-      <div class="min-w-0 flex-1">
-        <h3 class="text-sm font-semibold text-white flex items-center gap-1.5">
-          {{ name }}
-          <i class="fa-solid fa-arrow-right text-[10px] text-slate-600
-                    group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all"></i>
-        </h3>
-        <p class="text-xs text-slate-500 mt-1 leading-relaxed">{{ description }}</p>
-      </div>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+      {% for href, icon, name, description in modules %}
+      <a href="{{ href }}"
+         class="tile stat-card glass-card rounded-xl p-5 group block
+                hover:border-blue-500/50 hover:shadow-glow">
+        <div class="flex items-start gap-3.5">
+          <div class="w-11 h-11 rounded-lg bg-blue-500/15 border border-blue-500/25
+                      flex items-center justify-center flex-shrink-0">
+            <i class="fa-solid {{ icon }} text-blue-400 text-lg"></i>
+          </div>
+          <div class="min-w-0 flex-1">
+            <h2 class="text-sm font-semibold text-white flex items-center gap-1.5">
+              {{ name }}
+              <i class="fa-solid fa-arrow-right text-[10px] text-slate-600
+                        group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all"></i>
+            </h2>
+            <p class="text-xs text-slate-500 mt-1 leading-relaxed">{{ description }}</p>
+          </div>
+        </div>
+      </a>
+      {% endfor %}
     </div>
-  </a>
-  {% endfor %}
-</div>
+  </main>
 
-<p class="text-center text-[11px] text-slate-600 mt-8">
-  SentinelAI &mdash; Lightweight SIEM &bull; Academic Prototype
-</p>
+  <footer class="text-center pb-8 text-[11px] text-slate-600">
+    SentinelAI &mdash; Lightweight SIEM &bull; Academic Prototype
+  </footer>
 
-{% endblock %}
+</body>
+</html>

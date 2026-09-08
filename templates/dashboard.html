@@ -292,16 +292,30 @@
 {% block scripts %}
 <script>
   // ── SHARED APEX THEME ──────────────────────────────────────────
+  // ApexCharts takes colours as JS strings, so it cannot consume CSS
+  // variables directly. These read the resolved values off :root instead, so
+  // the charts stay tied to the one palette in partials/theme.html rather
+  // than carrying a second, silently diverging copy of it.
+  const css = getComputedStyle(document.documentElement);
+  const paint = (name, alpha) => {
+    // The variables hold space-separated channels for Tailwind's
+    // `rgb(var(--x) / <alpha-value>)` form, but ApexCharts' colour parser only
+    // accepts the comma form and silently throws on the space one.
+    const channels = css.getPropertyValue(name).trim().replace(/\s+/g, ',');
+    return alpha === undefined ? `rgb(${channels})` : `rgba(${channels},${alpha})`;
+  };
+  const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+
   const apexTheme = {
-    theme: { mode: 'dark' },
+    theme: { mode: isLight ? 'light' : 'dark' },
     chart: {
       background: 'transparent',
       fontFamily: 'Inter, system-ui, sans-serif',
       toolbar: { show: false },
       animations: { enabled: true, easing: 'easeinout', speed: 600 }
     },
-    tooltip: { theme: 'dark' },
-    grid: { borderColor: 'rgba(59,130,246,0.1)', strokeDashArray: 3 }
+    tooltip: { theme: isLight ? 'light' : 'dark' },
+    grid: { borderColor: paint('--a-500', 0.15), strokeDashArray: 3 }
   };
 
   // ── DONUT CHART ────────────────────────────────────────────────
@@ -325,7 +339,7 @@
       series,
       labels,
       colors,
-      legend: { position: 'bottom', labels: { colors: '#94a3b8' } },
+      legend: { position: 'bottom', labels: { colors: paint('--n-400') } },
       dataLabels: { style: { fontFamily: 'Inter, sans-serif', fontWeight: '600' } },
       plotOptions: {
         pie: {
@@ -336,7 +350,7 @@
               total: {
                 show: true,
                 label: 'Total',
-                color: '#94a3b8',
+                color: paint('--n-400'),
                 fontWeight: '600',
                 formatter: (w) => w.globals.seriesTotals.reduce((a, b) => a + b, 0)
               }
@@ -344,7 +358,7 @@
           }
         }
       },
-      stroke: { colors: ['#0a1628'], width: 2 }
+      stroke: { colors: [paint('--surface-1')], width: 2 }
     }).render();
   })();
   {% endif %}
@@ -362,16 +376,16 @@
       series: [{ name: 'Alerts', data: series_data }],
       xaxis: {
         categories,
-        labels: { style: { colors: '#64748b', fontSize: '11px' }, rotate: -30 },
-        axisBorder: { color: 'rgba(59,130,246,0.2)' },
-        axisTicks: { color: 'rgba(59,130,246,0.2)' }
+        labels: { style: { colors: paint('--n-500'), fontSize: '11px' }, rotate: -30 },
+        axisBorder: { color: paint('--a-500', 0.3) },
+        axisTicks: { color: paint('--a-500', 0.3) }
       },
-      yaxis: { labels: { style: { colors: '#64748b' } } },
-      colors: ['#3b82f6'],
+      yaxis: { labels: { style: { colors: paint('--n-500') } } },
+      colors: [paint('--a-500')],
       fill: {
         type: 'gradient',
         gradient: { shade: 'dark', type: 'vertical', shadeIntensity: 0.4,
-          gradientToColors: ['#06b6d4'], stops: [0, 100] }
+          gradientToColors: [paint('--g-500')], stops: [0, 100] }
       },
       plotOptions: { bar: { borderRadius: 4, columnWidth: '50%' } },
       dataLabels: { enabled: false }
