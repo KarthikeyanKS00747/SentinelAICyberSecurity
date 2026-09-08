@@ -1,0 +1,88 @@
+{# Live region for an explanation that is still generating.
+
+   Swapped in by POST /api/alerts/{id}/explain when nothing is cached yet. It
+   opens the SSE endpoint, appends each token as it arrives, and on completion
+   re-requests the POST endpoint -- which now hits the cache and renders the
+   parsed four-section card in place of this raw text. #}
+<div class="htmx-added my-2 mx-1 p-4 rounded-lg border border-purple-500/30
+            bg-gradient-to-r from-purple-900/20 to-slate-900/20 backdrop-blur-sm"
+     id="explain-stream-wrap-{{ alert.id }}">
+  <div class="flex items-start gap-3">
+
+    <div class="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
+      <i class="fa-solid fa-robot text-purple-400 text-sm"></i>
+    </div>
+
+    <div class="flex-1 min-w-0">
+      <div class="flex items-center flex-wrap gap-2 mb-3">
+        <p class="text-sm font-semibold text-purple-300">AI Threat Explanation</p>
+        <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-500/15 text-slate-400 border border-slate-500/30">
+          Alert #{{ alert.id }} &middot; {{ alert.threat_name }}
+        </span>
+        <span class="px-2 py-0.5 rounded text-[10px] font-mono bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">
+          {{ model }}
+        </span>
+        <span id="explain-stream-state-{{ alert.id }}"
+              class="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+          <i class="fa-solid fa-circle-notch fa-spin"></i> generating&hellip;
+        </span>
+      </div>
+
+      <div class="rounded-lg bg-sentinel-900/50 border border-blue-900/30 p-3">
+        <p id="explain-stream-{{ alert.id }}"
+           aria-live="polite"
+           class="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap min-h-[1.5rem]"></p>
+      </div>
+
+      <p class="mt-2.5 text-[10px] text-slate-500 flex items-center gap-1.5">
+        <i class="fa-solid fa-circle-info text-purple-500/60"></i>
+        Streaming live from Ollama on this machine. The formatted breakdown appears when it finishes.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var id = {{ alert.id }};
+    var out   = document.getElementById('explain-stream-' + id);
+    var state = document.getElementById('explain-stream-state-' + id);
+    var host  = document.getElementById('explain-row-' + id);
+    if (!out || !host) return;
+
+    var source = new EventSource('/api/alerts/' + id + '/explain/stream');
+
+    source.addEventListener('chunk', function (evt) {
+      // textContent, never innerHTML: this is unreviewed model output.
+      out.textContent += JSON.parse(evt.data);
+    });
+
+    source.addEventListener('done', function () {
+      source.close();
+      if (state) state.innerHTML = '<i class="fa-solid fa-circle-check"></i> formatting…';
+      // The explanation is cached now, so this POST returns instantly.
+      htmx.ajax('POST', '/api/alerts/' + id + '/explain', {
+        target: '#explain-row-' + id,
+        swap: 'innerHTML',
+        source: host
+      });
+    });
+
+    source.addEventListener('fail', function (evt) {
+      source.close();
+      // Server-rendered error fragment from our own template, not model output.
+      host.innerHTML = JSON.parse(evt.data);
+    });
+
+    // Fires on a dropped connection too; the stream is one-shot, so retrying
+    // would start a second generation. Close and let the analyst press Explain.
+    source.onerror = function () {
+      if (source.readyState === EventSource.CLOSED) return;
+      source.close();
+      if (state) {
+        state.className = 'px-2 py-0.5 rounded text-[10px] font-semibold bg-red-500/10 text-red-300 border border-red-500/30';
+        state.innerHTML = '<i class="fa-solid fa-plug-circle-xmark"></i> connection lost';
+      }
+    };
+  })();
+</script>
