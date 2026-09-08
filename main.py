@@ -22,6 +22,7 @@ from routers.auth import (
     authentication_required_handler,
     router as auth_router,
 )
+from routers.correlation import router as correlation_router
 from routers.dashboard import router as dashboard_router
 from routers.geo import router as geo_router
 from routers.health import router as health_router
@@ -133,4 +134,5 @@ app.include_router(reports_router)
 app.include_router(geo_router)
 app.include_router(abuse_router)
 app.include_router(response_router)
+app.include_router(correlation_router)
 app.include_router(health_router)

@@ -1,0 +1,10 @@
+{# Inline multi-stage warning for one alert row. Rendered only when the IP has
+   triggered 2+ distinct attack types. #}
+<span class="inline-flex items-center gap-1 mt-1 px-1.5 py-px rounded text-[9px] font-semibold border
+             {% if correlation.band == 'high' %}bg-red-500/15 text-red-300 border-red-500/40
+             {% elif correlation.band == 'medium' %}bg-amber-500/15 text-amber-300 border-amber-500/40
+             {% else %}bg-blue-500/15 text-blue-300 border-blue-500/40{% endif %}"
+      title="{{ correlation.source_ip }} triggered {{ correlation.distinct_types }} distinct attack types across {{ correlation.total_alerts }} alert{% if correlation.total_alerts != 1 %}s{% endif %}. Correlation score {{ correlation.score }}/100.">
+  <i class="fa-solid fa-triangle-exclamation text-[8px]"></i>
+  Multi-stage: {{ correlation.chain_text }}
+</span>

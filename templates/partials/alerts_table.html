@@ -74,6 +74,9 @@
                   hx-trigger="load"
                   hx-swap="innerHTML"></span>
                   <span id="blocked-badge-{{ alert.id }}"></span>
+                  <span hx-get="/api/correlation/{{ alert.source_ip.split(',')[0].strip() }}"
+                        hx-trigger="load"
+                        hx-swap="innerHTML"></span>
             {% endif %}
           </td>
 
