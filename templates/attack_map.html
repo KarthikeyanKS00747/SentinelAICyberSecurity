@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Attack Map – SentinelAI{% endblock %}
+{% block page_title %}Attack Map{% endblock %}
+{% block page_subtitle %}Alert source IPs plotted from the geolocation cache{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css"
+      integrity="sha512-Zcn6bjR/8RZbLEpLIeOwNtzREBAJnUKESxces60Mpoj+2okopSAcSUIUOseddDm0cxnGQzxIR7vJgsLZbdLE3w=="
+      crossorigin="anonymous" referrerpolicy="no-referrer" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"
+        integrity="sha512-BwHfrr4c9kmRkLw6iXFdzcdWV/PGkVgiIyIWLLlTSXzWQzxuSg4DiQUCpauz/EWjgk5TYQqX/kvn9pG1NpYfqg=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<style>
+  /* OpenStreetMap tiles are drawn for a light page. Under the dark themes they
+     are dimmed and desaturated so the severity markers stay the brightest
+     thing on screen; the light theme leaves them alone. */
+  #attack-map { height: 60vh; min-height: 380px; border-radius: 0.5rem; }
+  [data-theme="dark"] #attack-map .leaflet-tile-pane,
+  [data-theme="contrast"] #attack-map .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(0.82) contrast(0.9) saturate(0.5);
+  }
+  [data-theme="contrast"] #attack-map .leaflet-tile-pane { filter: invert(1) grayscale(1) contrast(1.1); }
+
+  /* Popups follow the app palette rather than Leaflet's white default. */
+  .leaflet-popup-content-wrapper,
+  .leaflet-popup-tip {
+    background: rgb(var(--surface-1));
+    color: rgb(var(--n-200));
+    border: var(--border-width) solid rgb(var(--a-500) / 0.35);
+  }
+  .leaflet-popup-content { margin: 0.75rem 0.9rem; font-size: 12px; }
+  .leaflet-container a.leaflet-popup-close-button { color: rgb(var(--n-400)); }
+  .leaflet-control-attribution {
+    background: rgb(var(--surface-1) / 0.85) !important;
+    color: rgb(var(--n-500)) !important;
+  }
+  .leaflet-control-attribution a { color: rgb(var(--a-400)) !important; }
+  .leaflet-bar a {
+    background: rgb(var(--surface-1));
+    color: rgb(var(--n-200));
+    border-bottom-color: rgb(var(--a-500) / 0.25);
+  }
+  .leaflet-bar a:hover { background: rgb(var(--surface-2)); color: rgb(var(--n-100)); }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── SUMMARY ─────────────────────────────────────────────────── -->
+<div class="glass-card rounded-xl p-4 mb-5 flex flex-wrap items-center gap-4">
+  <div class="w-9 h-9 rounded-lg bg-blue-500/15 flex items-center justify-center flex-shrink-0">
+    <i class="fa-solid fa-earth-americas text-blue-400"></i>
+  </div>
+  <div class="flex-1 min-w-[16rem]">
+    <h2 class="text-sm font-semibold text-white">Geographic origin of alerts</h2>
+    <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">
+      {{ plotted_alerts }} of {{ total_alerts }} alert{% if total_alerts != 1 %}s{% endif %}
+      plotted across {{ markers | length }} location{% if markers | length != 1 %}s{% endif %}.
+      {% if skipped_alerts %}
+      {{ skipped_alerts }} skipped &mdash; private addresses and public IPs not yet in the
+      geolocation cache. Opening the <a href="/alerts" class="text-blue-400 hover:text-blue-300 underline">Alerts</a>
+      page fills the cache for any public IP it renders.
+      {% endif %}
+    </p>
+  </div>
+
+  <!-- Severity legend: the same swatches the badges and charts use -->
+  <div class="flex items-center gap-3 flex-wrap">
+    {% for level, colour in severity_colours.items() %}
+    <span class="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+      <span class="w-2.5 h-2.5 rounded-full inline-block" style="background: {{ colour }}"></span>{{ level }}
+    </span>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- ── MAP ─────────────────────────────────────────────────────── -->
+{% if markers %}
+<div class="glass-card rounded-xl p-3">
+  <div id="attack-map" role="region" aria-label="Map of alert source IP locations"></div>
+</div>
+{% else %}
+<div class="glass-card rounded-xl flex flex-col items-center justify-center py-20 text-slate-500">
+  <i class="fa-solid fa-earth-americas text-4xl opacity-15 mb-3"></i>
+  <p class="text-sm font-medium text-slate-400">Nothing to plot yet</p>
+  <p class="text-xs mt-1 max-w-md text-center leading-relaxed">
+    No alert source IP has a cached location. Private addresses
+    (10.x, 192.168.x, 127.x) are never geolocated. For public IPs, open the
+    <a href="/alerts" class="text-blue-400 hover:text-blue-300 underline">Alerts</a>
+    page once &mdash; each row looks its address up and caches the result.
+  </p>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+{% if markers %}
+{# Marker data is serialised as JSON rather than templated into JS statements,
+   so an IP or ISP string can never terminate the script. #}
+<script id="attack-map-data" type="application/json">{{ markers | tojson }}</script>
+<script>
+  (function () {
+    var markers = JSON.parse(document.getElementById('attack-map-data').textContent);
+
+    var map = L.map('attack-map', { worldCopyJump: true, scrollWheelZoom: false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+
+    // Click to zoom, so a stray scroll over the map does not hijack the page.
+    map.on('click', function () { map.scrollWheelZoom.enable(); });
+    map.on('mouseout', function () { map.scrollWheelZoom.disable(); });
+
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function popupHtml(m) {
+      var place = [m.city, m.country].filter(Boolean).join(', ') || 'Unknown location';
+      var html =
+        '<p style="font-family:JetBrains Mono,monospace;font-weight:600;font-size:13px;margin:0 0 2px">'
+        + escapeHtml(m.ip) + '</p>' +
+        '<p style="margin:0 0 8px;opacity:.7">'
+        + (m.country_code ? '<strong>' + escapeHtml(m.country_code) + '</strong> &middot; ' : '')
+        + escapeHtml(place)
+        + (m.isp ? '<br>' + escapeHtml(m.isp) : '') + '</p>' +
+        '<p style="margin:0 0 4px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;opacity:.6">'
+        + m.alerts.length + ' alert' + (m.alerts.length === 1 ? '' : 's') + '</p>';
+
+      html += '<ul style="margin:0;padding:0;list-style:none">';
+      m.alerts.forEach(function (a) {
+        html +=
+          '<li style="display:flex;align-items:baseline;gap:6px;padding:2px 0">' +
+          '<span style="width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:' + a.colour + '"></span>' +
+          '<span>' + escapeHtml(a.threat_name) +
+          ' <span style="opacity:.55">#' + a.id + ' &middot; ' + escapeHtml(a.severity.toUpperCase()) +
+          ' &middot; risk ' + a.risk_score + '</span></span></li>';
+      });
+      html += '</ul>';
+      return html;
+    }
+
+    var bounds = [];
+    markers.forEach(function (m) {
+      bounds.push([m.lat, m.lon]);
+      L.circleMarker([m.lat, m.lon], {
+        radius: 7 + Math.min(m.alerts.length - 1, 5),
+        color: m.colour,
+        weight: 2,
+        fillColor: m.colour,
+        fillOpacity: 0.45
+      })
+        .addTo(map)
+        .bindPopup(popupHtml(m))
+        .bindTooltip(m.ip, { direction: 'top', offset: [0, -6] });
+    });
+
+    if (bounds.length === 1) {
+      map.setView(bounds[0], 5);
+    } else {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 8 });
+    }
+  })();
+</script>
+{% endif %}
+{% endblock %}

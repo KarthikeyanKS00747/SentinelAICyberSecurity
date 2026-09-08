@@ -13,6 +13,22 @@ from dataclasses import dataclass, field
 OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
 GENERATION_TIMEOUT_SECONDS = 120.0
 
+# Hard ceiling on generated tokens. Wall-clock generation time on a local model
+# is very nearly linear in the number of tokens produced, so output length is
+# the only latency lever this layer has. Measured against llama3:8b the prompt
+# below lands at ~160 output tokens; this cap sits at roughly twice that as a
+# runaway guard, not as the shaping tool -- a cap tight enough to bite would
+# truncate mid-sentence, which is why the prompt does the actual shaping.
+MAX_RESPONSE_TOKENS = 300
+
+# Low temperature: this is a summarisation task over values already present in
+# the prompt, so sampling variety buys nothing and costs coherence.
+GENERATION_OPTIONS: dict[str, float | int] = {
+    "num_predict": MAX_RESPONSE_TOKENS,
+    "temperature": 0.2,
+    "top_p": 0.9,
+}
+
 SECTION_LABELS = ("EXPLANATION", "RATIONALE", "IMPACT", "MITIGATION")
 
 # Some local models (qwen3, deepseek-r1, ...) emit a reasoning block first.
@@ -40,15 +56,21 @@ class AlertExplanation:
 
 
 def build_explanation_prompt(alert) -> str:
-    """Build the Ollama prompt for one Alert row."""
+    """Build the Ollama prompt for one Alert row.
+
+    Written to be answered briefly: every section carries an explicit sentence
+    budget and the mitigation list is capped. A junior analyst triaging a queue
+    wants the shape of the threat, not an essay -- and the shorter answer is
+    also the faster one to generate.
+    """
     detected_at = alert.detected_at.strftime("%Y-%m-%d %H:%M:%S UTC") if alert.detected_at else "unknown"
     labels = "\n".join(
         f"{label}: <{description}>"
         for label, description in (
-            ("EXPLANATION", "in plain language, what this alert means for someone new to security"),
-            ("RATIONALE", "why SentinelAI flagged it, referring to the threat name, source IP and risk score above"),
-            ("IMPACT", "what could happen if this is a genuine attack"),
-            ("MITIGATION", "concrete remediation steps, one per line, each starting with '- '"),
+            ("EXPLANATION", "2-3 sentences in plain language on what this alert means"),
+            ("RATIONALE", "2-3 sentences on why SentinelAI flagged it, citing the threat name, source IP and risk score above"),
+            ("IMPACT", "2-3 sentences on what could happen if this is a genuine attack"),
+            ("MITIGATION", "2 or 3 concrete remediation steps, one per line, each starting with '- ' and under 15 words"),
         )
     )
     return (
@@ -66,11 +88,31 @@ def build_explanation_prompt(alert) -> str:
         "starting a new line:\n\n"
         f"{labels}\n\n"
         "Rules:\n"
-        "- Write in plain language and keep EXPLANATION, RATIONALE and IMPACT to 2-4 sentences each.\n"
+        # Deliberately conservative wording. A stronger "answer immediately, no
+        # preamble" instruction made llama3 drop the MITIGATION label entirely
+        # and run the bullets onto the end of IMPACT, so brevity is asked for
+        # as a length budget rather than as a ban on preamble.
+        "- Write in plain language and be concise: keep EXPLANATION, RATIONALE and IMPACT to "
+        "2-3 short sentences each, and give at most 3 mitigation steps of one sentence each.\n"
+        "- Keep the whole reply under 130 words.\n"
         "- Refer to the actual values above; do not invent hostnames, usernames, ports or timestamps.\n"
         "- Do not use markdown headings, bold text or code fences.\n"
         "- Do not add any section other than the four listed above."
     )
+
+
+def build_generate_payload(alert, model: str, *, stream: bool) -> dict:
+    """Assemble the ``/api/generate`` request body for one alert.
+
+    Shared by the streaming and non-streaming callers so the prompt, the token
+    cap and the sampling settings cannot drift apart between the two paths.
+    """
+    return {
+        "model": model,
+        "prompt": build_explanation_prompt(alert),
+        "stream": stream,
+        "options": dict(GENERATION_OPTIONS),
+    }
 
 
 def _clean(text: str) -> str:
@@ -80,9 +122,23 @@ def _clean(text: str) -> str:
     return "\n".join(line.rstrip() for line in text.strip().splitlines()).strip()
 
 
+def _strip_bullets(line: str) -> str:
+    """Remove every leading bullet marker from one line.
+
+    Applied repeatedly because models sometimes echo the bullet character from
+    the prompt on top of their own, producing "- - Block the source IP"; a
+    single substitution would leave the stray dash in the rendered step.
+    """
+    previous = None
+    while previous != line:
+        previous = line
+        line = _BULLET.sub("", line)
+    return line.strip()
+
+
 def _to_steps(text: str) -> list[str]:
     """Split a mitigation block into individual steps."""
-    steps = [_BULLET.sub("", line).strip() for line in text.splitlines() if line.strip()]
+    steps = [_strip_bullets(line) for line in text.splitlines() if line.strip()]
     return [step for step in steps if step]
 
 

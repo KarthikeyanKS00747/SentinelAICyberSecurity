@@ -6,43 +6,9 @@
   <meta name="description" content="SentinelAI – Lightweight SIEM dashboard for log analysis and threat detection." />
   <title>{% block title %}SentinelAI SIEM{% endblock %}</title>
 
-  <!-- Tailwind CSS CDN (v3 Play CDN) -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: {
-        extend: {
-          colors: {
-            sentinel: {
-              950: '#050b18',
-              900: '#0a1628',
-              800: '#0f2040',
-              700: '#132a54',
-              600: '#1a3a6e',
-              accent: '#3b82f6',
-              cyan:   '#06b6d4',
-              green:  '#10b981',
-              amber:  '#f59e0b',
-              red:    '#ef4444',
-            }
-          },
-          fontFamily: {
-            sans: ['Inter', 'system-ui', 'sans-serif'],
-            mono: ['JetBrains Mono', 'monospace'],
-          },
-          boxShadow: {
-            glow: '0 0 20px rgba(59,130,246,0.25)',
-            'glow-red': '0 0 20px rgba(239,68,68,0.25)',
-          }
-        }
-      }
-    }
-  </script>
-
-  <!-- Google Fonts -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  {# Palette, Tailwind config, fonts and shared component styles all live in
+     one shared include so base.html, login.html and home.html cannot drift. #}
+  {% include "partials/theme.html" %}
 
   <!-- HTMX CDN -->
   <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous"></script>
@@ -54,57 +20,10 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
   <style>
-    body { background-color: #050b18; }
-
-    /* Sidebar link transitions */
-    .nav-link { transition: all 0.2s ease; }
-    .nav-link:hover { transform: translateX(4px); }
-    .nav-link.active {
-      background: linear-gradient(90deg, rgba(59,130,246,0.2), transparent);
-      border-left: 3px solid #3b82f6;
-    }
-
-    /* Glassmorphism cards */
-    .glass-card {
-      background: rgba(15,32,64,0.6);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(59,130,246,0.15);
-    }
-
-    /* Custom scrollbar */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: #0a1628; }
-    ::-webkit-scrollbar-thumb { background: #1a3a6e; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #3b82f6; }
-
     /* HTMX loading indicator */
     .htmx-indicator { opacity: 0; transition: opacity 0.2s ease; }
     .htmx-request .htmx-indicator { opacity: 1; }
     .htmx-request.htmx-indicator { opacity: 1; }
-
-    /* Animated gradient border on stat cards */
-    .stat-card {
-      position: relative;
-      overflow: hidden;
-    }
-    .stat-card::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: linear-gradient(135deg, rgba(59,130,246,0.08), rgba(6,182,212,0.04));
-      pointer-events: none;
-    }
-
-    /* Table row hover */
-    .alert-row { transition: background-color 0.15s ease; }
-    .alert-row:hover { background-color: rgba(59,130,246,0.06) !important; }
-
-    /* Pulse animation for critical badges */
-    @keyframes pulse-red {
-      0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
-      50% { box-shadow: 0 0 0 6px rgba(239,68,68,0); }
-    }
-    .badge-critical { animation: pulse-red 2s infinite; }
 
     /* Toasts are opaque at all times. Only the slide is animated: a paused
        animation (background tab, throttled rendering) holds its first
@@ -200,6 +119,12 @@
          class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
         <i class="fa-solid fa-diagram-project w-4 text-center text-amber-400"></i>
         Correlation
+      </a>
+
+      <a href="/map" id="nav-map"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-earth-americas w-4 text-center text-cyan-400"></i>
+        Attack Map
       </a>
 
       <a href="/blocked-ips" id="nav-blocked"
@@ -314,6 +239,7 @@
         '/settings':    'nav-settings',
         '/blocked-ips': 'nav-blocked',
         '/correlation': 'nav-correlation',
+        '/map':         'nav-map',
       };
       const id = map[path] || (path.startsWith('/alerts') ? 'nav-alerts' : null);
       if (id) {
@@ -353,11 +279,13 @@
 
       // Only actions worth confirming. Lazy GET fragments (geo, abuse, mitre,
       // correlation, block-button) are excluded by the method check below.
+      // /explain is excluded too: it now streams, and the streaming panel
+      // reports its own state inline, which beats a toast that would fire
+      // once when generation starts and again when the cached card lands.
       const ACTIONS = [
         { test: /\/api\/alerts\/\d+\/block$/,   ok: 'Source IP blocked',        fail: 'Could not block that IP' },
         { test: /\/api\/alerts\/\d+\/unblock$/, ok: 'Block lifted',             fail: 'Could not lift that block' },
         { test: /\/api\/alerts\/\d+\/status$/,  ok: 'Alert status updated',     fail: 'Could not update the alert' },
-        { test: /\/api\/alerts\/\d+\/explain$/, ok: 'AI explanation ready',     fail: 'Explanation unavailable' },
         { test: /\/api\/settings\//,              ok: 'Setting saved',            fail: 'Setting rejected' },
         { test: /\/api\/logs\/upload$/,           ok: 'Log file analysed',        fail: 'Upload rejected' },
       ];
