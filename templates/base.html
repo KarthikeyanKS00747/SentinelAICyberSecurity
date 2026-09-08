@@ -171,6 +171,12 @@
         Threat Intel
       </a>
 
+      <a href="/blocked-ips" id="nav-blocked"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-ban w-4 text-center text-red-400"></i>
+        Blocked IPs
+      </a>
+
       <a href="/settings" id="nav-settings"
          class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
         <i class="fa-solid fa-sliders w-4 text-center text-cyan-400"></i>
@@ -266,6 +272,7 @@
         '/upload':      'nav-upload',
         '/threat-intel':'nav-threat',
         '/settings':    'nav-settings',
+        '/blocked-ips': 'nav-blocked',
       };
       const id = map[path] || (path.startsWith('/alerts') ? 'nav-alerts' : null);
       if (id) {

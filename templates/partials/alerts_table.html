@@ -73,6 +73,7 @@
                   hx-get="/api/abuse/{{ alert.source_ip.split(',')[0].strip() }}"
                   hx-trigger="load"
                   hx-swap="innerHTML"></span>
+                  <span id="blocked-badge-{{ alert.id }}"></span>
             {% endif %}
           </td>
 
@@ -143,6 +144,11 @@
                   <i class="fa-solid fa-circle-notch fa-spin text-xs"></i>
                 </span>
               </button>
+
+              <span id="block-cell-{{ alert.id }}"
+                    hx-get="/api/alerts/{{ alert.id }}/block-button"
+                    hx-trigger="load"
+                    hx-swap="innerHTML"></span>
             </div>
           </td>
         </tr>

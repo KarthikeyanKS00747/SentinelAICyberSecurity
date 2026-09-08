@@ -103,6 +103,7 @@ class Alert(Base):
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ai_explanation: Mapped[str | None] = mapped_column(Text)
+    recommended_action: Mapped[str | None] = mapped_column(String(128))
 
     log_file: Mapped["LogFile"] = relationship(back_populates="alerts")
 
@@ -120,6 +121,26 @@ class AppSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, onupdate=utc_now
     )
+
+
+class BlockedIP(Base):
+    """Persistent record of an analyst blocking a source IP.
+
+    Unblocking flips ``is_active`` rather than deleting, so the audit trail of
+    who blocked what, and when, survives.
+    """
+
+    __tablename__ = "blocked_ips"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45), unique=True, index=True)
+    blocked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    blocked_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    unblocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    blocker: Mapped["User | None"] = relationship()
 
 
 class GeoLocation(Base):

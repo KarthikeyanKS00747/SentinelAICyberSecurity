@@ -27,6 +27,7 @@ from routers.geo import router as geo_router
 from routers.health import router as health_router
 from routers.logs import router as logs_router
 from routers.reports import router as reports_router
+from routers.response import router as response_router
 from routers.settings import router as settings_router
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,14 @@ async def lifespan(_: FastAPI):
             except OperationalError:
                 # A concurrent/repeated startup may have added it already.
                 logger.info("alerts_count column already exists")
+        # create_all() adds missing tables but never missing columns, so new
+        # columns on existing tables need their own guarded ALTER.
+        columns = await connection.execute(text("PRAGMA table_info(alerts)"))
+        if "recommended_action" not in {row[1] for row in columns.fetchall()}:
+            try:
+                await connection.execute(text("ALTER TABLE alerts ADD COLUMN recommended_action VARCHAR(128)"))
+            except OperationalError:
+                logger.info("recommended_action column already exists")
     async with AsyncSessionLocal() as db:
         existing = await db.scalar(select(ThreatIntel.id).limit(1))
         if existing is None:
@@ -123,4 +132,5 @@ app.include_router(logs_router)
 app.include_router(reports_router)
 app.include_router(geo_router)
 app.include_router(abuse_router)
+app.include_router(response_router)
 app.include_router(health_router)

@@ -8,6 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models import Alert, AlertStatus, ParsedLogEntry, SeverityLevel, ThreatIntel
 from utils.settings_service import get_setting
 
+# Rule-based triage guidance stamped onto each alert at creation time.
+RECOMMENDED_ACTIONS = {
+    SeverityLevel.CRITICAL: "Block source IP immediately",
+    SeverityLevel.HIGH: "Investigate and consider blocking",
+    SeverityLevel.MEDIUM: "Monitor for repeated activity",
+    SeverityLevel.LOW: "Log for reference",
+}
+
 # Fallbacks used only if a setting row is missing or holds an unusable value.
 DEFAULT_BRUTE_FORCE_THRESHOLD = 5
 DEFAULT_PORT_SCAN_THRESHOLD = 10
@@ -64,6 +72,7 @@ async def run_threat_detection(db: AsyncSession, log_file_id: int) -> int:
                 # full list in the description so the column cannot overflow.
                 source_ip=malicious_ips[0],
                 description=f"Activity detected from known malicious IPs: {', '.join(malicious_ips)}",
+                recommended_action=RECOMMENDED_ACTIONS[SeverityLevel.CRITICAL],
                 status=AlertStatus.OPEN,
             )
         )
@@ -85,6 +94,7 @@ async def run_threat_detection(db: AsyncSession, log_file_id: int) -> int:
                     risk_score=85,
                     source_ip=source_ip,
                     description=f"Detected {failed_count} failed authentication attempts from {source_ip}.",
+                    recommended_action=RECOMMENDED_ACTIONS[SeverityLevel.HIGH],
                     status=AlertStatus.OPEN,
                 )
             )
@@ -105,6 +115,7 @@ async def run_threat_detection(db: AsyncSession, log_file_id: int) -> int:
                         risk_score=60,
                         source_ip=source_ip,
                         description=f"IP {source_ip} interacted with {activity_count} distinct ports/events rapidly.",
+                        recommended_action=RECOMMENDED_ACTIONS[SeverityLevel.MEDIUM],
                         status=AlertStatus.OPEN,
                     )
                 )
