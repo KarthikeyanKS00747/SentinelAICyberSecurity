@@ -106,6 +106,25 @@
     }
     .badge-critical { animation: pulse-red 2s infinite; }
 
+    /* Toasts are opaque at all times. Only the slide is animated: a paused
+       animation (background tab, throttled rendering) holds its first
+       keyframe, so animating opacity from 0 would leave the confirmation
+       invisible for its whole lifetime. Worst case here is an 8px offset. */
+    @keyframes toast-in {
+      from { transform: translateY(8px); }
+      to   { transform: translateY(0); }
+    }
+    .toast-item {
+      opacity: 1;
+      transform: translateY(0);
+      animation: toast-in 0.25s ease-out;
+    }
+    .toast-item.toast-out {
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
     /* Smooth fade-in for HTMX swapped content */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(-4px); }
@@ -142,7 +161,13 @@
     <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
       <p class="px-3 mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Main Menu</p>
 
-      <a href="/" id="nav-dashboard"
+      <a href="/" id="nav-home"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-house w-4 text-center text-slate-400"></i>
+        Home
+      </a>
+
+      <a href="/dashboard" id="nav-dashboard"
          class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
         <i class="fa-solid fa-gauge-high w-4 text-center text-blue-400"></i>
         Dashboard
@@ -231,6 +256,10 @@
         <span class="text-xs text-slate-400">System Online</span>
       </div>
       <p class="text-xs text-slate-600 mt-1 font-mono">SentinelAI v0.1.0</p>
+      <p class="flex items-center gap-1.5 text-xs text-slate-500 mt-1.5 font-mono">
+        <i class="fa-regular fa-clock text-[10px] text-slate-600"></i>
+        <span id="sidebar-clock" aria-live="off">--:--:--</span>
+      </p>
     </div>
   </aside>
 
@@ -268,12 +297,17 @@
     </footer>
   </div>
 
+  <!-- ── TOASTS ────────────────────────────────────────────────── -->
+  <div id="toast-stack" aria-live="polite" aria-atomic="true"
+       class="fixed bottom-5 right-5 z-[100] flex flex-col items-end gap-2 pointer-events-none"></div>
+
   <!-- ── ACTIVE NAV SCRIPT ─────────────────────────────────────── -->
   <script>
     (function () {
       const path = window.location.pathname;
       const map = {
-        '/':            'nav-dashboard',
+        '/':            'nav-home',
+        '/dashboard':   'nav-dashboard',
         '/alerts':      'nav-alerts',
         '/upload':      'nav-upload',
         '/threat-intel':'nav-threat',
@@ -292,6 +326,74 @@
       });
       document.body.addEventListener('htmx:afterRequest', () => {
         document.getElementById('global-spinner')?.classList.remove('htmx-request');
+      });
+
+      // ── LIVE CLOCK ─────────────────────────────────────────────
+      const clock = document.getElementById('sidebar-clock');
+      if (clock) {
+        const tick = () => { clock.textContent = new Date().toLocaleTimeString(); };
+        tick();
+        setInterval(tick, 1000);
+      }
+    })();
+
+    // ── TOASTS ───────────────────────────────────────────────────
+    // Purely client side: htmx already fires an event per request, so there is
+    // nothing to poll and no backend involvement. The inline fragment swap is
+    // untouched; this only adds a transient confirmation on top of it.
+    (function () {
+      const stack = document.getElementById('toast-stack');
+      if (!stack) return;
+
+      const TONES = {
+        success: { border: 'border-green-500/40', bg: 'bg-green-500/10', text: 'text-green-300', icon: 'fa-circle-check' },
+        error:   { border: 'border-red-500/40',   bg: 'bg-red-500/10',   text: 'text-red-300',   icon: 'fa-circle-exclamation' },
+        info:    { border: 'border-blue-500/40',  bg: 'bg-blue-500/10',  text: 'text-blue-300',  icon: 'fa-circle-info' },
+      };
+
+      // Only actions worth confirming. Lazy GET fragments (geo, abuse, mitre,
+      // correlation, block-button) are excluded by the method check below.
+      const ACTIONS = [
+        { test: /\/api\/alerts\/\d+\/block$/,   ok: 'Source IP blocked',        fail: 'Could not block that IP' },
+        { test: /\/api\/alerts\/\d+\/unblock$/, ok: 'Block lifted',             fail: 'Could not lift that block' },
+        { test: /\/api\/alerts\/\d+\/status$/,  ok: 'Alert status updated',     fail: 'Could not update the alert' },
+        { test: /\/api\/alerts\/\d+\/explain$/, ok: 'AI explanation ready',     fail: 'Explanation unavailable' },
+        { test: /\/api\/settings\//,              ok: 'Setting saved',            fail: 'Setting rejected' },
+        { test: /\/api\/logs\/upload$/,           ok: 'Log file analysed',        fail: 'Upload rejected' },
+      ];
+
+      function showToast(message, tone) {
+        const style = TONES[tone] || TONES.info;
+        const el = document.createElement('div');
+        el.className = 'toast-item pointer-events-auto flex items-center gap-2.5 px-4 py-2.5 ' +
+          'rounded-lg border backdrop-blur-sm shadow-lg text-xs font-medium ' +
+          style.border + ' ' + style.bg + ' ' + style.text;
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid ' + style.icon + ' text-xs';
+        const span = document.createElement('span');
+        span.textContent = message;   // textContent, never innerHTML
+        el.appendChild(icon);
+        el.appendChild(span);
+        stack.appendChild(el);
+        setTimeout(() => {
+          el.classList.add('toast-out');
+          setTimeout(() => el.remove(), 300);
+        }, 3200);
+      }
+      window.sentinelToast = showToast;
+
+      document.body.addEventListener('htmx:afterRequest', function (evt) {
+        const cfg = evt.detail && evt.detail.requestConfig;
+        const xhr = evt.detail && evt.detail.xhr;
+        if (!cfg || !xhr) return;
+        if ((cfg.verb || '').toLowerCase() === 'get') return;   // skip lazy loads
+
+        const path = String(cfg.path || '');
+        const action = ACTIONS.find(a => a.test.test(path));
+        if (!action) return;
+
+        const ok = xhr.status >= 200 && xhr.status < 300;
+        showToast(ok ? action.ok : action.fail, ok ? 'success' : 'error');
       });
     })();
   </script>

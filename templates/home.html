@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}Home – SentinelAI{% endblock %}
+{% block page_title %}Home{% endblock %}
+{% block page_subtitle %}Pick a module to get started{% endblock %}
+
+{% block content %}
+
+<!-- ── WELCOME ─────────────────────────────────────────────────── -->
+<div class="glass-card rounded-xl p-6 mb-8 flex items-start gap-4">
+  <div class="flex items-center justify-center w-12 h-12 rounded-xl
+              bg-gradient-to-br from-blue-500 to-cyan-500 shadow-glow flex-shrink-0">
+    <i class="fa-solid fa-shield-halved text-white text-xl"></i>
+  </div>
+  <div>
+    <h2 class="text-lg font-semibold text-white">
+      Welcome back{% if current_user %}, {{ current_user.username }}{% endif %}
+    </h2>
+    <p class="text-sm text-slate-400 mt-1 leading-relaxed">
+      SentinelAI analyses uploaded log files, detects threats with rule-based
+      logic, and explains them with a local LLM. Everything runs on this machine.
+    </p>
+  </div>
+</div>
+
+<!-- ── MODULE TILES ────────────────────────────────────────────── -->
+{% set modules = [
+  ('/dashboard',   'fa-gauge-high',        'text-blue-400',   'bg-blue-500/15',   'Dashboard',    'Aggregated statistics, severity breakdown and charts.'),
+  ('/alerts',      'fa-triangle-exclamation','text-amber-400','bg-amber-500/15',  'Alerts',       'Triage detected threats, explain them and block source IPs.'),
+  ('/upload',      'fa-cloud-arrow-up',    'text-green-400',  'bg-green-500/15',  'Upload Logs',  'Submit a .log, .txt or .csv file for parsing and analysis.'),
+  ('/threat-intel','fa-crosshairs',        'text-red-400',    'bg-red-500/15',    'Threat Intel', 'Known malicious indicators from the local threat feed.'),
+  ('/correlation', 'fa-diagram-project',   'text-amber-400',  'bg-amber-500/15',  'Correlation',  'Source IPs showing multi-stage activity across attack types.'),
+  ('/blocked-ips', 'fa-ban',               'text-red-400',    'bg-red-500/15',    'Blocked IPs',  'Audit trail of every manual block applied by an analyst.'),
+  ('/settings',    'fa-sliders',           'text-cyan-400',   'bg-cyan-500/15',   'Settings',     'Tune detection thresholds and AI behaviour at runtime.')
+] %}
+
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5">
+  {% for href, icon, icon_colour, icon_bg, name, description in modules %}
+  <a href="{{ href }}"
+     class="stat-card glass-card rounded-xl p-5 group transition-all duration-200
+            hover:border-blue-500/40 hover:shadow-glow">
+    <div class="flex items-start gap-3.5">
+      <div class="w-11 h-11 rounded-lg {{ icon_bg }} flex items-center justify-center flex-shrink-0">
+        <i class="fa-solid {{ icon }} {{ icon_colour }} text-lg"></i>
+      </div>
+      <div class="min-w-0 flex-1">
+        <h3 class="text-sm font-semibold text-white flex items-center gap-1.5">
+          {{ name }}
+          <i class="fa-solid fa-arrow-right text-[10px] text-slate-600
+                    group-hover:text-blue-400 group-hover:translate-x-0.5 transition-all"></i>
+        </h3>
+        <p class="text-xs text-slate-500 mt-1 leading-relaxed">{{ description }}</p>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+
+<p class="text-center text-[11px] text-slate-600 mt-8">
+  SentinelAI &mdash; Lightweight SIEM &bull; Academic Prototype
+</p>
+
+{% endblock %}

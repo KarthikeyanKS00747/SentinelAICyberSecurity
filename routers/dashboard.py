@@ -37,6 +37,19 @@ def _tpl(name: str, request: Request, **ctx):
 
 
 @router.get("/", response_class=HTMLResponse)
+async def home(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+) -> HTMLResponse:
+    """Landing page: module tiles linking to each area of the app.
+
+    Cosmetic only - no queries, no aggregation. The dashboard's statistics
+    live at /dashboard.
+    """
+    return _tpl("home.html", request, current_user=current_user)
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(
     request: Request,
     db: AsyncSession = Depends(get_db),
