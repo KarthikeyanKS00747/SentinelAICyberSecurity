@@ -14,14 +14,17 @@ from sqlalchemy.exc import OperationalError
 import models  # noqa: F401 - registers all ORM models with Base.metadata.
 from config import settings
 from database import AsyncSessionLocal, Base, engine
-from models import AppSetting, SeverityLevel, ThreatIntel
+from models import ROLE_ADMIN, ROLE_ANALYST, AppSetting, SeverityLevel, ThreatIntel
 from routers.abuse import router as abuse_router
 from routers.alerts import router as alerts_router
 from routers.anomalies import router as anomalies_router
 from routers.attack_map import router as attack_map_router
+from routers.audit import router as audit_router
 from routers.auth import (
     AuthenticationRequired,
+    AuthorizationRequired,
     authentication_required_handler,
+    authorization_required_handler,
     router as auth_router,
 )
 from routers.correlation import router as correlation_router
@@ -34,6 +37,7 @@ from routers.mitre import router as mitre_router
 from routers.reports import router as reports_router
 from routers.response import router as response_router
 from routers.settings import router as settings_router
+from routers.users import router as users_router
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +63,27 @@ async def lifespan(_: FastAPI):
                 await connection.execute(text("ALTER TABLE alerts ADD COLUMN recommended_action VARCHAR(128)"))
             except OperationalError:
                 logger.info("recommended_action column already exists")
+        columns = await connection.execute(text("PRAGMA table_info(users)"))
+        if "role" not in {row[1] for row in columns.fetchall()}:
+            try:
+                await connection.execute(
+                    text(f"ALTER TABLE users ADD COLUMN role VARCHAR(16) DEFAULT '{ROLE_ANALYST}'")
+                )
+                # Accounts that predate RBAC were provisioned by hand through
+                # seed_admin.py, so they are the operators. Defaulting them to
+                # analyst would lock every existing install out of settings,
+                # blocking and user management with no way back in. This runs
+                # only in the branch that adds the column, so a later analyst
+                # account is never promoted by a restart.
+                promoted = await connection.execute(
+                    text(f"UPDATE users SET role = '{ROLE_ADMIN}' WHERE role IS NULL OR role = '{ROLE_ANALYST}'")
+                )
+                logger.info(
+                    "Added users.role and promoted %d pre-existing account(s) to admin",
+                    promoted.rowcount,
+                )
+            except OperationalError:
+                logger.info("role column already exists")
     async with AsyncSessionLocal() as db:
         existing = await db.scalar(select(ThreatIntel.id).limit(1))
         if existing is None:
@@ -132,6 +157,7 @@ app.add_middleware(
 
 
 app.add_exception_handler(AuthenticationRequired, authentication_required_handler)
+app.add_exception_handler(AuthorizationRequired, authorization_required_handler)
 
 
 @app.exception_handler(Exception)
@@ -149,6 +175,8 @@ app.include_router(alerts_router)
 app.include_router(anomalies_router)
 app.include_router(attack_map_router)
 app.include_router(settings_router)
+app.include_router(users_router)
+app.include_router(audit_router)
 # API routers
 app.include_router(logs_router)
 app.include_router(reports_router)

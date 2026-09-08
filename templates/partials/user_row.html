@@ -1,0 +1,75 @@
+{# One account row. Swapped in place (outerHTML) after every role change. #}
+<tr id="user-row-{{ user.id }}"
+    class="alert-row htmx-added {% if error %}bg-red-500/5{% elif saved %}bg-green-500/5{% endif %} transition-colors">
+
+  <td class="px-4 py-3 font-mono text-xs text-slate-400">#{{ user.id }}</td>
+
+  <td class="px-4 py-3">
+    <div class="font-semibold text-white">{{ user.username }}</div>
+    <div class="text-xs text-slate-500 mt-0.5">{{ user.email }}</div>
+    {% if error %}
+    <p role="alert" class="mt-1.5 flex items-center gap-1.5 text-xs text-red-300">
+      <i class="fa-solid fa-circle-exclamation text-red-400 text-[10px]"></i>{{ error }}
+    </p>
+    {% elif saved %}
+    <p class="mt-1.5 flex items-center gap-1.5 text-xs text-green-300">
+      <i class="fa-solid fa-circle-check text-green-400 text-[10px]"></i>Role saved.
+    </p>
+    {% endif %}
+  </td>
+
+  <td class="px-4 py-3">
+    {% if user.role == 'admin' %}
+    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold
+                 bg-amber-500/20 text-amber-300 border border-amber-500/40">
+      <i class="fa-solid fa-user-shield text-[10px]"></i>ADMIN
+    </span>
+    {% else %}
+    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-bold
+                 bg-blue-500/15 text-blue-300 border border-blue-500/30">
+      <i class="fa-solid fa-user text-[10px]"></i>ANALYST
+    </span>
+    {% endif %}
+  </td>
+
+  <td class="px-4 py-3">
+    {% if user.is_active %}
+    <span class="px-2 py-0.5 rounded text-xs font-medium bg-green-500/15 text-green-300">ACTIVE</span>
+    {% else %}
+    <span class="px-2 py-0.5 rounded text-xs font-medium bg-slate-500/15 text-slate-400">INACTIVE</span>
+    {% endif %}
+  </td>
+
+  <td class="px-4 py-3">
+    <form class="flex items-center gap-2"
+          hx-post="/api/users/{{ user.id }}/role"
+          hx-target="#user-row-{{ user.id }}"
+          hx-swap="outerHTML"
+          hx-indicator="#user-spinner-{{ user.id }}">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}" />
+      <select name="role"
+              aria-label="Role for {{ user.username }}"
+              class="bg-sentinel-800/60 border border-blue-900/30 rounded-lg px-3 py-1.5 text-sm text-slate-300
+                     focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors">
+        {% for option in roles %}
+        <option value="{{ option }}" {% if user.role == option %}selected{% endif %}>{{ option | capitalize }}</option>
+        {% endfor %}
+      </select>
+      <button type="submit"
+              {% if user.id == current_user.id %}
+              title="Changing your own role takes effect immediately — you may lose access to this page."
+              {% else %}
+              title="Apply this role to {{ user.username }}."
+              {% endif %}
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                     bg-blue-500/15 text-blue-400 border border-blue-500/30
+                     hover:bg-blue-500/25 hover:border-blue-400/50 transition-all duration-200">
+        <i class="fa-solid fa-floppy-disk text-[10px]"></i>
+        Apply
+      </button>
+      <span id="user-spinner-{{ user.id }}" class="htmx-indicator">
+        <i class="fa-solid fa-circle-notch fa-spin text-blue-400 text-xs"></i>
+      </span>
+    </form>
+  </td>
+</tr>

@@ -23,7 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
 from models import Alert, BlockedIP, User, utc_now
-from routers.auth import get_current_user, require_csrf
+from routers.auth import get_current_user, require_admin, require_csrf
+from utils.audit import ACTION_IP_BLOCK, ACTION_IP_UNBLOCK, record_audit
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +59,15 @@ async def _active_block(db: AsyncSession, ip: str) -> BlockedIP | None:
     )
 
 
-async def _render_button(request: Request, db: AsyncSession, alert: Alert) -> HTMLResponse:
-    """Render the block/unblock control plus an out-of-band row badge."""
+async def _render_button(
+    request: Request, db: AsyncSession, alert: Alert, current_user: User
+) -> HTMLResponse:
+    """Render the block/unblock control plus an out-of-band row badge.
+
+    ``current_user`` is passed through so the fragment can omit the controls
+    entirely for an analyst, rather than rendering a button whose POST would
+    only come back 403.
+    """
     ip = primary_ip(alert.source_ip)
     block = await _active_block(db, ip) if ip else None
     return _tpl(
@@ -68,6 +76,7 @@ async def _render_button(request: Request, db: AsyncSession, alert: Alert) -> HT
         alert=alert,
         ip=ip,
         block=block,
+        current_user=current_user,
     )
 
 
@@ -83,7 +92,7 @@ async def block_button(
     alert = await db.get(Alert, alert_id)
     if alert is None:
         return HTMLResponse(content="", status_code=status.HTTP_404_NOT_FOUND)
-    return await _render_button(request, db, alert)
+    return await _render_button(request, db, alert, current_user)
 
 
 # -- POST /api/alerts/{alert_id}/block -------------------------------
@@ -92,7 +101,7 @@ async def block_ip(
     alert_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     _csrf: None = Depends(require_csrf),
 ) -> HTMLResponse:
     """Block this alert's source IP, recording who did it and when."""
@@ -121,10 +130,11 @@ async def block_ip(
         existing.blocked_at = utc_now()
         existing.unblocked_at = None
         existing.reason = reason
+    record_audit(db, current_user, ACTION_IP_BLOCK, target=ip, details=reason)
     await db.commit()
     logger.info("User #%d blocked %s via alert #%d", current_user.id, ip, alert.id)
 
-    return await _render_button(request, db, alert)
+    return await _render_button(request, db, alert, current_user)
 
 
 # -- POST /api/alerts/{alert_id}/unblock -----------------------------
@@ -133,7 +143,7 @@ async def unblock_ip(
     alert_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     _csrf: None = Depends(require_csrf),
 ) -> HTMLResponse:
     """Deactivate the block on this alert's source IP, keeping the record."""
@@ -149,10 +159,14 @@ async def unblock_ip(
     if block is not None:
         block.is_active = False
         block.unblocked_at = utc_now()
+        record_audit(
+            db, current_user, ACTION_IP_UNBLOCK,
+            target=ip, details=f"block lifted via alert #{alert.id}",
+        )
         await db.commit()
         logger.info("User #%d unblocked %s via alert #%d", current_user.id, ip, alert.id)
 
-    return await _render_button(request, db, alert)
+    return await _render_button(request, db, alert, current_user)
 
 
 # -- GET /blocked-ips ------------------------------------------------

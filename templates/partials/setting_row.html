@@ -20,6 +20,21 @@
       </p>
     </div>
 
+    {# Editing is admin-gated. Analysts still need to read the thresholds their
+       alerts were produced under, so the value is shown read-only with the
+       reason rather than the row being hidden entirely. #}
+    {% if not (current_user is defined and current_user and current_user.is_admin) %}
+    <div class="flex items-center gap-2 flex-shrink-0"
+         title="Changing settings is an administrator action. You have the analyst role.">
+      <span class="w-28 bg-sentinel-800/40 border border-blue-900/20 rounded-lg px-3 py-1.5
+                   text-sm text-slate-400 font-mono truncate">{{ setting.value }}</span>
+      <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                   bg-slate-500/10 text-slate-500 border border-slate-500/20 cursor-not-allowed">
+        <i class="fa-solid fa-lock text-[10px]"></i>
+        Admin only
+      </span>
+    </div>
+    {% else %}
     <!-- Editor -->
     <form class="flex items-center gap-2 flex-shrink-0"
           hx-post="/api/settings/{{ setting.key }}"
@@ -48,6 +63,7 @@
         <i class="fa-solid fa-circle-notch fa-spin text-blue-400 text-xs"></i>
       </span>
     </form>
+    {% endif %}
   </div>
 
   <!-- Result -->

@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import User
+from models import ROLE_ADMIN, User
 from utils.security import (
     CSRF_FORM_FIELD,
     CSRF_HEADER_NAME,
@@ -37,6 +37,8 @@ templates = Jinja2Templates(directory="templates")
 LOGIN_PATH = "/login"
 API_PREFIX = "/api/"
 SESSION_USER_KEY = "user_id"
+# Where a signed-in non-admin lands after being refused an admin-only page.
+DENIED_REDIRECT = "/dashboard"
 
 
 def _tpl(name: str, request: Request, status_code: int = 200, **ctx):
@@ -99,6 +101,58 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
 
     request.state.current_user = user
     return user
+
+
+class AuthorizationRequired(Exception):
+    """Raised by ``require_admin`` when a signed-in user lacks the admin role.
+
+    Distinct from :class:`AuthenticationRequired`: the caller *is* signed in,
+    so bouncing them to the login page would be misleading. This is a 403, not
+    a 401.
+    """
+
+    def __init__(self, is_htmx: bool = False) -> None:
+        self.is_htmx = is_htmx
+        super().__init__("Administrator access required")
+
+
+async def authorization_required_handler(request: Request, exc: AuthorizationRequired) -> Response:
+    """Turn a role failure into the right answer for the caller.
+
+    The /api/ branch comes first here, the opposite of the authentication
+    handler: every admin-gated mutation is an /api/ route driven by htmx, and
+    answering those with HX-Redirect would navigate the whole page away from
+    the analyst's work instead of just refusing the action. A JSON 403 leaves
+    the page intact, and the existing toast layer already reports the failure.
+    """
+    if request.url.path.startswith(API_PREFIX):
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={"detail": "Administrator access required."},
+        )
+    if exc.is_htmx:
+        return Response(status_code=status.HTTP_204_NO_CONTENT, headers={"HX-Redirect": DENIED_REDIRECT})
+    return RedirectResponse(DENIED_REDIRECT, status_code=status.HTTP_303_SEE_OTHER)
+
+
+async def require_admin(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Allow only administrators through, and hand the route the user.
+
+    Depends on ``get_current_user`` rather than re-reading the session, so an
+    unauthenticated caller still gets the ordinary login redirect and only a
+    signed-in non-admin sees the 403.
+    """
+    if current_user.role != ROLE_ADMIN:
+        logger.warning(
+            "User #%d (%s, role=%s) was refused admin action %s %s",
+            current_user.id, current_user.username, current_user.role,
+            request.method, request.url.path,
+        )
+        raise AuthorizationRequired(bool(request.headers.get("HX-Request")))
+    return current_user
 
 
 async def require_csrf(request: Request) -> None:

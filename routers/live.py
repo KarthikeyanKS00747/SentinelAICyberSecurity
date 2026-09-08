@@ -20,9 +20,10 @@ import logging
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, WebSocket, WebSocketDisconnect, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_db
+from database import AsyncSessionLocal, get_db
 from models import User
-from routers.auth import SESSION_USER_KEY, get_current_user, require_csrf
+from routers.auth import SESSION_USER_KEY, get_current_user, require_admin, require_csrf
+from utils.audit import ACTION_SIMULATION_START, record_audit
 from utils.live_bus import EVENT_HELLO, manager
 from utils.live_simulator import DEFAULT_FIXTURE, FIXTURES, is_running, run_simulation
 
@@ -106,7 +107,7 @@ async def alerts_feed(websocket: WebSocket, db: AsyncSession = Depends(get_db)) 
 async def simulate_live_log(
     request: Request,
     fixture: str = Form(DEFAULT_FIXTURE),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     _csrf: None = Depends(require_csrf),
 ) -> dict[str, object]:
     """Start a demo replay of a bundled fixture log in the background.
@@ -116,8 +117,9 @@ async def simulate_live_log(
     and there is no real-time log source behind it.
 
     Returns as soon as the replay starts; alerts arrive over the WebSocket as
-    each line is processed. There is no role system in SentinelAI, so this is
-    open to any signed-in user, CSRF-protected like every other mutating route.
+    each line is processed. Admin-gated and CSRF-protected like every other
+    mutating route: a replay writes real LogFile, ParsedLogEntry and Alert
+    rows, so it is a data-changing action however clearly it is labelled.
     """
     if fixture not in FIXTURES:
         raise HTTPException(
@@ -133,6 +135,15 @@ async def simulate_live_log(
     # Fire-and-forget: the replay outlives this request by design, so it gets
     # its own session inside run_simulation rather than borrowing the
     # request-scoped one, which closes when the response is returned.
+    # Audited before the replay starts, on its own session: the request-scoped
+    # one closes with the response, while the replay outlives it.
+    async with AsyncSessionLocal() as audit_db:
+        record_audit(
+            audit_db, current_user, ACTION_SIMULATION_START,
+            target=fixture, details="demo replay of a bundled fixture log",
+        )
+        await audit_db.commit()
+
     task = asyncio.create_task(run_simulation(fixture))
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)

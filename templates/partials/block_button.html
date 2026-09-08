@@ -2,8 +2,18 @@
    the Source IP cell in step without a full page reload. #}
 {% set csrf_token = request.session.get('csrf_token', '') %}
 
+{# Blocking is admin-gated. An analyst sees the block *state* (the badge
+   below is theirs too) but not a control whose POST would only return 403. #}
+{% set can_block = current_user is defined and current_user and current_user.is_admin %}
+
 {% if ip %}
-  {% if block %}
+  {% if not can_block %}
+  <span class="inline-flex items-center gap-1.5 text-[10px] text-slate-600"
+        title="Blocking and unblocking are administrator actions. You have the analyst role.">
+    <i class="fa-solid fa-lock text-[9px]"></i>
+    {% if block %}Blocked{% else %}Admin only{% endif %}
+  </span>
+  {% elif block %}
   <form hx-post="/api/alerts/{{ alert.id }}/unblock"
         hx-target="#block-cell-{{ alert.id }}"
         hx-swap="innerHTML"
