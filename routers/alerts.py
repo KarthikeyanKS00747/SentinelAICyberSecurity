@@ -25,6 +25,7 @@ from utils.ai_explain import (
     build_explanation_prompt,
     parse_explanation,
 )
+from utils.settings_service import get_setting
 
 logger = logging.getLogger(__name__)
 
@@ -176,8 +177,14 @@ async def explain_alert(
             cached=True,
         )
 
+    # Operator-tunable via the settings page; the module constant is the
+    # fallback when the row is missing or holds an unusable value.
+    timeout_seconds = await get_setting(
+        db, "ollama.explanation_timeout_seconds", GENERATION_TIMEOUT_SECONDS
+    )
+
     try:
-        async with httpx.AsyncClient(timeout=GENERATION_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             response = await client.post(
                 OLLAMA_GENERATE_URL,
                 json={
@@ -199,7 +206,7 @@ async def explain_alert(
             request,
             alert=alert,
             model=settings.OLLAMA_MODEL,
-            timeout=int(GENERATION_TIMEOUT_SECONDS),
+            timeout=int(timeout_seconds),
         )
 
     alert.ai_explanation = generated

@@ -6,6 +6,12 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Alert, AlertStatus, ParsedLogEntry, SeverityLevel, ThreatIntel
+from utils.settings_service import get_setting
+
+# Fallbacks used only if a setting row is missing or holds an unusable value.
+DEFAULT_BRUTE_FORCE_THRESHOLD = 5
+DEFAULT_PORT_SCAN_THRESHOLD = 10
+DEFAULT_HIGH_VOLUME_THRESHOLD = 50
 
 
 async def run_threat_detection(db: AsyncSession, log_file_id: int) -> int:
@@ -24,6 +30,17 @@ async def run_threat_detection(db: AsyncSession, log_file_id: int) -> int:
     )
     intel = list((await db.scalars(select(ThreatIntel))).all())
     blacklisted_ips = {record.indicator for record in intel if record.indicator_type == "ip"}
+
+    # Thresholds are operator-tunable via the settings page.
+    brute_force_threshold = await get_setting(
+        db, "detection.brute_force_threshold", DEFAULT_BRUTE_FORCE_THRESHOLD
+    )
+    port_scan_threshold = await get_setting(
+        db, "detection.port_scan_threshold", DEFAULT_PORT_SCAN_THRESHOLD
+    )
+    high_volume_threshold = await get_setting(
+        db, "detection.high_volume_threshold", DEFAULT_HIGH_VOLUME_THRESHOLD
+    )
 
     alerts: list[Alert] = []
     processed_threats: set[str] = set()
@@ -58,7 +75,7 @@ async def run_threat_detection(db: AsyncSession, log_file_id: int) -> int:
             for entry in source_entries
             if entry.status and any(value in entry.status.lower() for value in ("fail", "denied"))
         )
-        if failed_count >= 5 and key not in processed_threats:
+        if failed_count >= brute_force_threshold and key not in processed_threats:
             processed_threats.add(key)
             alerts.append(
                 Alert(
@@ -73,8 +90,8 @@ async def run_threat_detection(db: AsyncSession, log_file_id: int) -> int:
             )
 
         distinct_ports = {entry.destination_port for entry in source_entries if entry.destination_port is not None}
-        is_port_scan = len(distinct_ports) >= 10
-        is_high_volume = len(source_entries) >= 50
+        is_port_scan = len(distinct_ports) >= port_scan_threshold
+        is_high_volume = len(source_entries) >= high_volume_threshold
         activity_count = len(distinct_ports) if is_port_scan else len(source_entries)
         if is_port_scan or is_high_volume:
             key = f"PORT_SCAN_{source_ip}"

@@ -14,7 +14,7 @@ from sqlalchemy.exc import OperationalError
 import models  # noqa: F401 - registers all ORM models with Base.metadata.
 from config import settings
 from database import AsyncSessionLocal, Base, engine
-from models import SeverityLevel, ThreatIntel
+from models import AppSetting, SeverityLevel, ThreatIntel
 from routers.alerts import router as alerts_router
 from routers.auth import (
     AuthenticationRequired,
@@ -25,6 +25,7 @@ from routers.dashboard import router as dashboard_router
 from routers.health import router as health_router
 from routers.logs import router as logs_router
 from routers.reports import router as reports_router
+from routers.settings import router as settings_router
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,19 @@ async def lifespan(_: FastAPI):
                     ThreatIntel(indicator="192.168.1.100", indicator_type="ip", threat_category="Botnet", risk_level=SeverityLevel.HIGH, source="SentinelAI seed"),
                     ThreatIntel(indicator="10.0.0.50", indicator_type="ip", threat_category="Malware", risk_level=SeverityLevel.CRITICAL, source="SentinelAI seed"),
                     ThreatIntel(indicator="203.0.113.42", indicator_type="ip", threat_category="Brute Forcer", risk_level=SeverityLevel.HIGH, source="SentinelAI seed"),
+                ]
+            )
+            await db.commit()
+
+        existing_setting = await db.scalar(select(AppSetting.id).limit(1))
+        if existing_setting is None:
+            db.add_all(
+                [
+                    AppSetting(key="detection.brute_force_threshold", value="5", value_type="int", description="Failed authentication attempts from one source IP before a Brute Force alert is raised."),
+                    AppSetting(key="detection.port_scan_threshold", value="10", value_type="int", description="Distinct destination ports contacted by one source IP before a Port Scan alert is raised."),
+                    AppSetting(key="detection.high_volume_threshold", value="50", value_type="int", description="Total log entries from one source IP before a High Volume alert is raised."),
+                    AppSetting(key="detection.duplicate_cooldown_minutes", value="0", value_type="int", description="Reserved: minutes to suppress repeat alerts for the same rule and IP. Not enforced yet."),
+                    AppSetting(key="ollama.explanation_timeout_seconds", value="120", value_type="int", description="Seconds to wait for a local Ollama explanation. Not wired to the request timeout yet."),
                 ]
             )
             await db.commit()
@@ -101,6 +115,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 app.include_router(auth_router)
 app.include_router(dashboard_router)
 app.include_router(alerts_router)
+app.include_router(settings_router)
 # API routers
 app.include_router(logs_router)
 app.include_router(reports_router)

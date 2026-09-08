@@ -107,6 +107,21 @@ class Alert(Base):
     log_file: Mapped["LogFile"] = relationship(back_populates="alerts")
 
 
+class AppSetting(Base):
+    """Typed key-value store for runtime-tunable application settings."""
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    value: Mapped[str] = mapped_column(Text)
+    value_type: Mapped[str] = mapped_column(String(16), default="string")
+    description: Mapped[str | None] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
 class ThreatIntel(Base):
     __tablename__ = "threat_intel"
 
