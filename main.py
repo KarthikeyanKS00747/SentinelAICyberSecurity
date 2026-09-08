@@ -22,6 +22,7 @@ from routers.auth import (
     router as auth_router,
 )
 from routers.dashboard import router as dashboard_router
+from routers.geo import router as geo_router
 from routers.health import router as health_router
 from routers.logs import router as logs_router
 from routers.reports import router as reports_router
@@ -119,4 +120,5 @@ app.include_router(settings_router)
 # API routers
 app.include_router(logs_router)
 app.include_router(reports_router)
+app.include_router(geo_router)
 app.include_router(health_router)

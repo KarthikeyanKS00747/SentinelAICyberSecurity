@@ -122,6 +122,28 @@ class AppSetting(Base):
     )
 
 
+class GeoLocation(Base):
+    """Cached IP geolocation, filled lazily the first time an IP is displayed.
+
+    Deliberately separate from ThreatIntel: the detector treats every
+    ``ThreatIntel`` row with ``indicator_type == "ip"`` as blacklisted, so
+    caching benign IPs there would raise false Malicious IP alerts.
+    """
+
+    __tablename__ = "geo_locations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45), unique=True, index=True)
+    country: Mapped[str | None] = mapped_column(String(64))
+    country_code: Mapped[str | None] = mapped_column(String(2))
+    region: Mapped[str | None] = mapped_column(String(64))
+    city: Mapped[str | None] = mapped_column(String(64))
+    isp: Mapped[str | None] = mapped_column(String(128))
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    looked_up_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class ThreatIntel(Base):
     __tablename__ = "threat_intel"
 

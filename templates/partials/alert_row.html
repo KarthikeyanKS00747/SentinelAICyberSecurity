@@ -37,7 +37,17 @@
   </td>
 
   <!-- Source IP -->
-  <td class="px-4 py-3 font-mono text-xs text-slate-300">{{ alert.source_ip or '—' }}</td>
+  <td class="px-4 py-3 font-mono text-xs text-slate-300">
+          {{ alert.source_ip or '—' }}
+          {% if alert.source_ip %}
+          <span class="block mt-1"
+                hx-get="/api/geo/{{ alert.source_ip.split(',')[0].strip() }}"
+                hx-trigger="load"
+                hx-swap="innerHTML">
+            <span class="text-[10px] text-slate-600">locating&hellip;</span>
+          </span>
+          {% endif %}
+        </td>
 
   <!-- Risk Score -->
   <td class="px-4 py-3">

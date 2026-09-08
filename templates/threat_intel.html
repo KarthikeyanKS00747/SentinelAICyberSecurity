@@ -22,7 +22,17 @@
         {% for item in threat_intel %}
         {% set rl = item.risk_level.value %}
         <tr class="alert-row">
-          <td class="px-4 py-3 font-mono text-xs text-cyan-300">{{ item.indicator }}</td>
+          <td class="px-4 py-3 font-mono text-xs text-cyan-300">
+            {{ item.indicator }}
+            {% if item.indicator_type == 'ip' %}
+            <span class="block mt-1"
+                  hx-get="/api/geo/{{ item.indicator.split(',')[0].strip() }}"
+                  hx-trigger="load"
+                  hx-swap="innerHTML">
+              <span class="text-[10px] text-slate-600">locating&hellip;</span>
+            </span>
+            {% endif %}
+          </td>
           <td class="px-4 py-3 text-xs text-slate-400 uppercase">{{ item.indicator_type }}</td>
           <td class="px-4 py-3 text-sm text-slate-300">{{ item.threat_category }}</td>
           <td class="px-4 py-3">
