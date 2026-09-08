@@ -1,0 +1,26 @@
+{# AbuseIPDB confidence badge: green <25, amber 25-75, red >75. Display only. #}
+{% if abuse.is_checked %}
+<span class="inline-flex items-center gap-1"
+      title="AbuseIPDB: {{ abuse.abuse_confidence_score }}% confidence of abuse from {{ abuse.total_reports }} report{% if abuse.total_reports != 1 %}s{% endif %} in the last 90 days.">
+  {% if abuse.risk_band == 'high' %}
+  <span class="px-1.5 py-px rounded text-[9px] font-bold border
+               bg-red-500/15 text-red-400 border-red-500/40">{{ abuse.abuse_confidence_score }}% abuse</span>
+  {% elif abuse.risk_band == 'medium' %}
+  <span class="px-1.5 py-px rounded text-[9px] font-bold border
+               bg-amber-500/15 text-amber-400 border-amber-500/40">{{ abuse.abuse_confidence_score }}% abuse</span>
+  {% else %}
+  <span class="px-1.5 py-px rounded text-[9px] font-bold border
+               bg-green-500/15 text-green-400 border-green-500/40">{{ abuse.abuse_confidence_score }}% abuse</span>
+  {% endif %}
+  {% if abuse.total_reports %}
+  <span class="text-[9px] text-slate-600">{{ abuse.total_reports }} report{% if abuse.total_reports != 1 %}s{% endif %}</span>
+  {% endif %}
+</span>
+{% elif abuse.status == 'private' %}
+<span class="text-[9px] text-slate-600" title="{{ abuse.ip }} is a private or reserved address; no lookup was made.">not applicable</span>
+{% elif abuse.status == 'invalid' %}
+<span class="text-[9px] text-slate-600" title="{{ abuse.ip }} is not a single valid IP address.">not applicable</span>
+{% else %}
+<span class="text-[9px] text-slate-600"
+      title="Reputation unavailable. Set ABUSEIPDB_API_KEY in .env, or the lookup failed and will retry.">not checked</span>
+{% endif %}

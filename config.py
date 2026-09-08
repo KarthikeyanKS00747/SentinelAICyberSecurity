@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     APP_NAME: str = "SentinelAI"
     SECRET_KEY: str = Field(default="development-only-change-me", min_length=16)
     OLLAMA_MODEL: str = "llama3"
+    # Free key from https://www.abuseipdb.com/account/api
+    # Blank disables reputation lookups; they render as "not checked".
+    ABUSEIPDB_API_KEY: str = ""
     MAX_UPLOAD_SIZE_BYTES: int = Field(default=10 * 1024 * 1024, gt=0)
     DB_URL: str = "sqlite+aiosqlite:///./sentinelai.db"
     UPLOAD_DIR: Path = Path("uploads")

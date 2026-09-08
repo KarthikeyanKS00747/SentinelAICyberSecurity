@@ -15,6 +15,7 @@ import models  # noqa: F401 - registers all ORM models with Base.metadata.
 from config import settings
 from database import AsyncSessionLocal, Base, engine
 from models import AppSetting, SeverityLevel, ThreatIntel
+from routers.abuse import router as abuse_router
 from routers.alerts import router as alerts_router
 from routers.auth import (
     AuthenticationRequired,
@@ -121,4 +122,5 @@ app.include_router(settings_router)
 app.include_router(logs_router)
 app.include_router(reports_router)
 app.include_router(geo_router)
+app.include_router(abuse_router)
 app.include_router(health_router)

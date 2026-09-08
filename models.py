@@ -144,6 +144,23 @@ class GeoLocation(Base):
     looked_up_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class AbuseCheck(Base):
+    """Cached AbuseIPDB reputation for one IP.
+
+    Separate from GeoLocation and ThreatIntel: abuse scores change over time
+    (so rows expire), and ThreatIntel drives the detector's blocklist -- a
+    cached lookup must never leak into it.
+    """
+
+    __tablename__ = "abuse_checks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45), unique=True, index=True)
+    abuse_confidence_score: Mapped[int] = mapped_column(Integer, default=0)
+    total_reports: Mapped[int] = mapped_column(Integer, default=0)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class ThreatIntel(Base):
     __tablename__ = "threat_intel"
 
