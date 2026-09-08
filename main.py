@@ -111,15 +111,20 @@ async def lifespan(_: FastAPI):
 
         # Seeded per-key rather than in the block above, because that block
         # only fires on a completely empty settings table -- an existing
-        # install would otherwise never receive these two rows.
-        anomaly_defaults = [
+        # install would otherwise never receive these rows.
+        later_defaults = [
             AppSetting(key="anomaly.contamination", value="0.1", value_type="float", description="Expected share of source IPs the Isolation Forest treats as outliers. Must be within (0, 0.5]."),
             AppSetting(key="anomaly.min_distinct_ips", value="5", value_type="int", description="Distinct source IPs a log file needs before ML anomaly detection runs on it at all."),
+            AppSetting(key="detection.brute_force_window_minutes", value="5", value_type="int", description="Rolling window in minutes over which failed authentications are counted for the Brute Force rule."),
         ]
         existing_keys = set(
-            (await db.scalars(select(AppSetting.key).where(AppSetting.key.startswith("anomaly.")))).all()
+            (await db.scalars(
+                select(AppSetting.key).where(
+                    AppSetting.key.in_([setting.key for setting in later_defaults])
+                )
+            )).all()
         )
-        missing = [setting for setting in anomaly_defaults if setting.key not in existing_keys]
+        missing = [setting for setting in later_defaults if setting.key not in existing_keys]
         if missing:
             db.add_all(missing)
             await db.commit()

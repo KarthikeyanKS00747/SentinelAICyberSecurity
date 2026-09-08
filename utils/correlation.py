@@ -44,6 +44,7 @@ SHORT_LABELS = {
     "Malicious IP Activity": "Malicious IP",
     "Brute Force Attack": "Brute Force",
     "Potential Port Scan / High Volume": "Port Scan",
+    "Credential Compromise Suspected": "Cred. Compromise",
 }
 
 
