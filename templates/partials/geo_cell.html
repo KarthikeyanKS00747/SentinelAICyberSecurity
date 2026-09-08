@@ -1,0 +1,22 @@
+{# Geolocation badge for one IP. Country code shown as text rather than a flag
+   emoji: Windows has no flag glyphs, so those render as bare letter pairs. #}
+{% if geo.is_resolved %}
+<span class="inline-flex items-center gap-1.5"
+      title="{{ geo.ip }}{% if geo.region %} &middot; {{ geo.region }}{% endif %}{% if geo.isp %} &middot; {{ geo.isp }}{% endif %}">
+  {% if geo.country_code %}
+  <span class="px-1 py-px rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30
+               text-[9px] font-bold tracking-wider">{{ geo.country_code }}</span>
+  {% endif %}
+  <span class="text-[10px] text-slate-400">{{ geo.label }}</span>
+</span>
+{% elif geo.status == 'private' %}
+<span class="inline-flex items-center gap-1 text-[10px] text-slate-600" title="{{ geo.ip }} is a private or reserved address; no lookup was made.">
+  <i class="fa-solid fa-house-laptop text-[9px]"></i>Private network
+</span>
+{% elif geo.status == 'invalid' %}
+<span class="text-[10px] text-slate-600" title="{{ geo.ip }} is not a single valid IP address.">Invalid IP</span>
+{% else %}
+<span class="inline-flex items-center gap-1 text-[10px] text-slate-600" title="Geolocation is unavailable for {{ geo.ip }} right now.">
+  <i class="fa-solid fa-circle-question text-[9px]"></i>Unknown
+</span>
+{% endif %}

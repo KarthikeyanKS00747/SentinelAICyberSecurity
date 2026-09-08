@@ -17,13 +17,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
 from database import get_db
-from models import Alert, AlertStatus, utc_now
+from models import Alert, AlertStatus, User, utc_now
+from routers.auth import get_current_user, require_csrf
 from utils.ai_explain import (
     GENERATION_TIMEOUT_SECONDS,
     OLLAMA_GENERATE_URL,
     build_explanation_prompt,
     parse_explanation,
 )
+from utils.settings_service import get_setting
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,7 @@ async def alerts_page(
     severity_filter: str | None = None,
     status_filter: str | None = None,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> HTMLResponse:
     """
     Render the full Alerts page.
@@ -91,6 +94,7 @@ async def alerts_page(
         status_filter=status_filter or "",
         open_alerts_count=open_alerts_count,
         is_partial=False,
+        current_user=current_user,
     )
 
     # HTMX partial swap – return only the table fragment
@@ -108,6 +112,8 @@ async def update_alert_status(
     request: Request,
     new_status: str = Form(...),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _csrf: None = Depends(require_csrf),
 ) -> HTMLResponse:
     """
     Update an alert's status field and return the refreshed table row
@@ -143,6 +149,8 @@ async def explain_alert(
     alert_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _csrf: None = Depends(require_csrf),
 ) -> HTMLResponse:
     """
     Ask the local Ollama model to explain one alert and cache the reply.
@@ -169,8 +177,14 @@ async def explain_alert(
             cached=True,
         )
 
+    # Operator-tunable via the settings page; the module constant is the
+    # fallback when the row is missing or holds an unusable value.
+    timeout_seconds = await get_setting(
+        db, "ollama.explanation_timeout_seconds", GENERATION_TIMEOUT_SECONDS
+    )
+
     try:
-        async with httpx.AsyncClient(timeout=GENERATION_TIMEOUT_SECONDS) as client:
+        async with httpx.AsyncClient(timeout=timeout_seconds) as client:
             response = await client.post(
                 OLLAMA_GENERATE_URL,
                 json={
@@ -192,7 +206,7 @@ async def explain_alert(
             request,
             alert=alert,
             model=settings.OLLAMA_MODEL,
-            timeout=int(GENERATION_TIMEOUT_SECONDS),
+            timeout=int(timeout_seconds),
         )
 
     alert.ai_explanation = generated

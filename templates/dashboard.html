@@ -95,6 +95,72 @@
 </div>
 {% endif %}
 
+<!-- ── THREAT FORECAST (trend heuristic) ───────────────────────── -->
+<div class="glass-card rounded-xl p-5 mb-8">
+  <div class="flex items-start justify-between mb-3 gap-4">
+    <div class="flex items-center gap-2.5">
+      <div class="w-9 h-9 rounded-lg bg-purple-500/15 flex items-center justify-center flex-shrink-0">
+        <i class="fa-solid fa-chart-line text-purple-400"></i>
+      </div>
+      <div>
+        <h2 class="text-sm font-semibold text-white">Threat Forecast</h2>
+        <p class="text-xs text-slate-500 mt-0.5">
+          {{ forecast.method_label }} &middot; last {{ forecast.window_hours }}h vs the {{ forecast.window_hours }}h before
+        </p>
+      </div>
+    </div>
+    <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-500/15 text-slate-400
+                 border border-slate-500/30 whitespace-nowrap self-center"
+          title="Counts of alerts raised (upload/analysis time), compared between two adjacent windows. No model, no probability.">
+      HEURISTIC
+    </span>
+  </div>
+
+  {% if forecast.is_insufficient %}
+  <div class="rounded-lg bg-sentinel-900/50 border border-blue-900/30 p-3 flex items-start gap-2.5">
+    <i class="fa-solid fa-circle-info text-slate-500 text-xs mt-0.5"></i>
+    <div>
+      <p class="text-xs font-semibold text-slate-400">Insufficient data</p>
+      <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">{{ forecast.reason }}</p>
+    </div>
+  </div>
+
+  {% elif forecast.has_trends %}
+  <div class="space-y-2">
+    {% for trend in forecast.trends %}
+    <div class="rounded-lg bg-sentinel-900/50 border border-amber-500/30 p-3 flex items-start gap-2.5">
+      <i class="fa-solid fa-arrow-trend-up text-amber-400 text-xs mt-0.5"></i>
+      <div class="flex-1 min-w-0">
+        <p class="text-xs text-slate-300 leading-relaxed">{{ trend.summary }}</p>
+        <p class="text-[10px] text-slate-600 mt-1 font-mono">
+          {{ trend.prior }} &rarr; {{ trend.recent }} ({{ '+' if trend.delta > 0 }}{{ trend.delta }})
+        </p>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="text-[10px] text-slate-600 mt-2.5">
+    {{ forecast.recent_total }} alert{% if forecast.recent_total != 1 %}s{% endif %} in the last
+    {{ forecast.window_hours }}h vs {{ forecast.prior_total }} in the window before.
+    A type is listed only if it rose and had at least {{ forecast.min_alerts }} alerts recently.
+  </p>
+
+  {% else %}
+  <div class="rounded-lg bg-sentinel-900/50 border border-blue-900/30 p-3 flex items-start gap-2.5">
+    <i class="fa-solid fa-equals text-slate-500 text-xs mt-0.5"></i>
+    <div>
+      <p class="text-xs font-semibold text-slate-400">No significant trend</p>
+      <p class="text-xs text-slate-500 mt-0.5 leading-relaxed">
+        {{ forecast.recent_total }} alert{% if forecast.recent_total != 1 %}s{% endif %} in the last
+        {{ forecast.window_hours }}h vs {{ forecast.prior_total }} in the window before &mdash;
+        nothing rose to at least {{ forecast.min_alerts }} alerts. Small counts are
+        deliberately not called a trend.
+      </p>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
 <!-- ── CHARTS ROW ──────────────────────────────────────────────── -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
 

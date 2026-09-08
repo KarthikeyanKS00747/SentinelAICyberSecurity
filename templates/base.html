@@ -45,13 +45,13 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
   <!-- HTMX CDN -->
-  <script src="https://unpkg.com/htmx.org@1.9.12" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2uQ8uDJg2j+S2rMENHLWYLi9kB5MBEQ4Qo" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous"></script>
 
   <!-- ApexCharts CDN -->
   <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.49.0/dist/apexcharts.min.js"></script>
 
   <!-- Font Awesome CDN -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
   <style>
     body { background-color: #050b18; }
@@ -106,6 +106,25 @@
     }
     .badge-critical { animation: pulse-red 2s infinite; }
 
+    /* Toasts are opaque at all times. Only the slide is animated: a paused
+       animation (background tab, throttled rendering) holds its first
+       keyframe, so animating opacity from 0 would leave the confirmation
+       invisible for its whole lifetime. Worst case here is an 8px offset. */
+    @keyframes toast-in {
+      from { transform: translateY(8px); }
+      to   { transform: translateY(0); }
+    }
+    .toast-item {
+      opacity: 1;
+      transform: translateY(0);
+      animation: toast-in 0.25s ease-out;
+    }
+    .toast-item.toast-out {
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.3s ease, transform 0.3s ease;
+    }
+
     /* Smooth fade-in for HTMX swapped content */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(-4px); }
@@ -117,7 +136,9 @@
   {% block head %}{% endblock %}
 </head>
 
-<body class="font-sans text-slate-200 min-h-screen flex" hx-boost="false">
+{% set csrf_token = request.session.get('csrf_token', '') %}
+<body class="font-sans text-slate-200 min-h-screen flex" hx-boost="false"
+      hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'>
 
   <!-- ── SIDEBAR ─────────────────────────────────────────────────── -->
   <aside id="sidebar"
@@ -140,7 +161,13 @@
     <nav class="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
       <p class="px-3 mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">Main Menu</p>
 
-      <a href="/" id="nav-dashboard"
+      <a href="/" id="nav-home"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-house w-4 text-center text-slate-400"></i>
+        Home
+      </a>
+
+      <a href="/dashboard" id="nav-dashboard"
          class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
         <i class="fa-solid fa-gauge-high w-4 text-center text-blue-400"></i>
         Dashboard
@@ -169,6 +196,24 @@
         Threat Intel
       </a>
 
+      <a href="/correlation" id="nav-correlation"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-diagram-project w-4 text-center text-amber-400"></i>
+        Correlation
+      </a>
+
+      <a href="/blocked-ips" id="nav-blocked"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-ban w-4 text-center text-red-400"></i>
+        Blocked IPs
+      </a>
+
+      <a href="/settings" id="nav-settings"
+         class="nav-link flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-blue-900/30">
+        <i class="fa-solid fa-sliders w-4 text-center text-cyan-400"></i>
+        Settings
+      </a>
+
       <div class="pt-4 mt-4 border-t border-blue-900/30">
         <p class="px-3 mb-2 text-xs font-semibold uppercase tracking-widest text-slate-500">System</p>
         <a href="/api/docs" target="_blank"
@@ -179,6 +224,31 @@
       </div>
     </nav>
 
+    <!-- Signed-in User -->
+    {% if current_user %}
+    <div class="px-4 py-3 border-t border-blue-900/30">
+      <div class="flex items-center gap-2.5 mb-2.5">
+        <div class="w-8 h-8 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center flex-shrink-0">
+          <i class="fa-solid fa-user text-blue-400 text-xs"></i>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p id="current-username" class="text-sm font-semibold text-white truncate">{{ current_user.username }}</p>
+          <p class="text-[10px] text-slate-500 truncate">Signed in</p>
+        </div>
+      </div>
+      <form method="post" action="/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        <button type="submit" id="logout-button"
+                class="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold
+                       bg-red-500/10 text-red-300 border border-red-500/30
+                       hover:bg-red-500/20 hover:text-red-200 transition-colors">
+          <i class="fa-solid fa-right-from-bracket text-[10px]"></i>
+          Sign out
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
     <!-- System Status Footer -->
     <div class="px-4 py-4 border-t border-blue-900/30">
       <div class="flex items-center gap-2">
@@ -186,6 +256,10 @@
         <span class="text-xs text-slate-400">System Online</span>
       </div>
       <p class="text-xs text-slate-600 mt-1 font-mono">SentinelAI v0.1.0</p>
+      <p class="flex items-center gap-1.5 text-xs text-slate-500 mt-1.5 font-mono">
+        <i class="fa-regular fa-clock text-[10px] text-slate-600"></i>
+        <span id="sidebar-clock" aria-live="off">--:--:--</span>
+      </p>
     </div>
   </aside>
 
@@ -223,15 +297,23 @@
     </footer>
   </div>
 
+  <!-- ── TOASTS ────────────────────────────────────────────────── -->
+  <div id="toast-stack" aria-live="polite" aria-atomic="true"
+       class="fixed bottom-5 right-5 z-[100] flex flex-col items-end gap-2 pointer-events-none"></div>
+
   <!-- ── ACTIVE NAV SCRIPT ─────────────────────────────────────── -->
   <script>
     (function () {
       const path = window.location.pathname;
       const map = {
-        '/':            'nav-dashboard',
+        '/':            'nav-home',
+        '/dashboard':   'nav-dashboard',
         '/alerts':      'nav-alerts',
         '/upload':      'nav-upload',
         '/threat-intel':'nav-threat',
+        '/settings':    'nav-settings',
+        '/blocked-ips': 'nav-blocked',
+        '/correlation': 'nav-correlation',
       };
       const id = map[path] || (path.startsWith('/alerts') ? 'nav-alerts' : null);
       if (id) {
@@ -244,6 +326,74 @@
       });
       document.body.addEventListener('htmx:afterRequest', () => {
         document.getElementById('global-spinner')?.classList.remove('htmx-request');
+      });
+
+      // ── LIVE CLOCK ─────────────────────────────────────────────
+      const clock = document.getElementById('sidebar-clock');
+      if (clock) {
+        const tick = () => { clock.textContent = new Date().toLocaleTimeString(); };
+        tick();
+        setInterval(tick, 1000);
+      }
+    })();
+
+    // ── TOASTS ───────────────────────────────────────────────────
+    // Purely client side: htmx already fires an event per request, so there is
+    // nothing to poll and no backend involvement. The inline fragment swap is
+    // untouched; this only adds a transient confirmation on top of it.
+    (function () {
+      const stack = document.getElementById('toast-stack');
+      if (!stack) return;
+
+      const TONES = {
+        success: { border: 'border-green-500/40', bg: 'bg-green-500/10', text: 'text-green-300', icon: 'fa-circle-check' },
+        error:   { border: 'border-red-500/40',   bg: 'bg-red-500/10',   text: 'text-red-300',   icon: 'fa-circle-exclamation' },
+        info:    { border: 'border-blue-500/40',  bg: 'bg-blue-500/10',  text: 'text-blue-300',  icon: 'fa-circle-info' },
+      };
+
+      // Only actions worth confirming. Lazy GET fragments (geo, abuse, mitre,
+      // correlation, block-button) are excluded by the method check below.
+      const ACTIONS = [
+        { test: /\/api\/alerts\/\d+\/block$/,   ok: 'Source IP blocked',        fail: 'Could not block that IP' },
+        { test: /\/api\/alerts\/\d+\/unblock$/, ok: 'Block lifted',             fail: 'Could not lift that block' },
+        { test: /\/api\/alerts\/\d+\/status$/,  ok: 'Alert status updated',     fail: 'Could not update the alert' },
+        { test: /\/api\/alerts\/\d+\/explain$/, ok: 'AI explanation ready',     fail: 'Explanation unavailable' },
+        { test: /\/api\/settings\//,              ok: 'Setting saved',            fail: 'Setting rejected' },
+        { test: /\/api\/logs\/upload$/,           ok: 'Log file analysed',        fail: 'Upload rejected' },
+      ];
+
+      function showToast(message, tone) {
+        const style = TONES[tone] || TONES.info;
+        const el = document.createElement('div');
+        el.className = 'toast-item pointer-events-auto flex items-center gap-2.5 px-4 py-2.5 ' +
+          'rounded-lg border backdrop-blur-sm shadow-lg text-xs font-medium ' +
+          style.border + ' ' + style.bg + ' ' + style.text;
+        const icon = document.createElement('i');
+        icon.className = 'fa-solid ' + style.icon + ' text-xs';
+        const span = document.createElement('span');
+        span.textContent = message;   // textContent, never innerHTML
+        el.appendChild(icon);
+        el.appendChild(span);
+        stack.appendChild(el);
+        setTimeout(() => {
+          el.classList.add('toast-out');
+          setTimeout(() => el.remove(), 300);
+        }, 3200);
+      }
+      window.sentinelToast = showToast;
+
+      document.body.addEventListener('htmx:afterRequest', function (evt) {
+        const cfg = evt.detail && evt.detail.requestConfig;
+        const xhr = evt.detail && evt.detail.xhr;
+        if (!cfg || !xhr) return;
+        if ((cfg.verb || '').toLowerCase() === 'get') return;   // skip lazy loads
+
+        const path = String(cfg.path || '');
+        const action = ACTIONS.find(a => a.test.test(path));
+        if (!action) return;
+
+        const ok = xhr.status >= 200 && xhr.status < 300;
+        showToast(ok ? action.ok : action.fail, ok ? 'success' : 'error');
       });
     })();
   </script>

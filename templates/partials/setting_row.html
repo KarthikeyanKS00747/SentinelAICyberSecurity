@@ -1,0 +1,65 @@
+{# One editable setting. Swapped in place (outerHTML) after every update. #}
+{% set slug = setting.key | replace('.', '-') %}
+{% set field_value = submitted if (submitted is defined and submitted is not none) else setting.value %}
+<div id="setting-{{ slug }}"
+     class="htmx-added px-4 py-3.5 border-t border-blue-900/20 first:border-t-0
+            {% if error %}bg-red-500/5{% elif saved %}bg-green-500/5{% endif %} transition-colors">
+  <div class="flex flex-wrap items-start gap-4">
+
+    <!-- Key + description -->
+    <div class="min-w-0 flex-1">
+      <p class="font-mono text-xs text-cyan-300 break-all">{{ setting.key }}</p>
+      {% if setting.description %}
+      <p class="text-xs text-slate-500 mt-1 leading-relaxed">{{ setting.description }}</p>
+      {% endif %}
+      <p class="text-[10px] text-slate-600 mt-1.5 font-mono">
+        type: {{ setting.value_type }}
+        {% if setting.updated_at %}
+        &middot; updated {{ setting.updated_at.strftime('%Y-%m-%d %H:%M') }} UTC
+        {% endif %}
+      </p>
+    </div>
+
+    <!-- Editor -->
+    <form class="flex items-center gap-2 flex-shrink-0"
+          hx-post="/api/settings/{{ setting.key }}"
+          hx-target="#setting-{{ slug }}"
+          hx-swap="outerHTML"
+          hx-indicator="#spinner-{{ slug }}">
+      <input type="hidden" name="csrf_token" value="{{ request.session.get('csrf_token', '') }}" />
+      <!-- text, not number: the server is the authority on validity, and a
+           number input would silently swallow bad input before it is sent. -->
+      <input type="text"
+             {% if setting.value_type in ('int', 'float') %}inputmode="numeric"{% endif %}
+             name="value"
+             value="{{ field_value }}"
+             aria-label="Value for {{ setting.key }}"
+             class="w-28 bg-sentinel-800/60 border rounded-lg px-3 py-1.5 text-sm text-slate-200 font-mono
+                    focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors
+                    {% if error %}border-red-500/50{% else %}border-blue-900/30{% endif %}" />
+      <button type="submit"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold
+                     bg-blue-500/15 text-blue-400 border border-blue-500/30
+                     hover:bg-blue-500/25 hover:border-blue-400/50 transition-all duration-200">
+        <i class="fa-solid fa-floppy-disk text-[10px]"></i>
+        Save
+      </button>
+      <span id="spinner-{{ slug }}" class="htmx-indicator">
+        <i class="fa-solid fa-circle-notch fa-spin text-blue-400 text-xs"></i>
+      </span>
+    </form>
+  </div>
+
+  <!-- Result -->
+  {% if error %}
+  <p role="alert" class="mt-2 flex items-center gap-1.5 text-xs text-red-300">
+    <i class="fa-solid fa-circle-exclamation text-red-400 text-[10px]"></i>
+    {{ error }} Value unchanged &mdash; still <span class="font-mono">{{ setting.value }}</span>.
+  </p>
+  {% elif saved %}
+  <p class="mt-2 flex items-center gap-1.5 text-xs text-green-300">
+    <i class="fa-solid fa-circle-check text-green-400 text-[10px]"></i>
+    Saved &mdash; now <span class="font-mono">{{ setting.value }}</span>.
+  </p>
+  {% endif %}
+</div>

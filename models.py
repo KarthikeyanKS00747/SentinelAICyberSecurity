@@ -103,8 +103,83 @@ class Alert(Base):
     detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ai_explanation: Mapped[str | None] = mapped_column(Text)
+    recommended_action: Mapped[str | None] = mapped_column(String(128))
 
     log_file: Mapped["LogFile"] = relationship(back_populates="alerts")
+
+
+class AppSetting(Base):
+    """Typed key-value store for runtime-tunable application settings."""
+
+    __tablename__ = "app_settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    value: Mapped[str] = mapped_column(Text)
+    value_type: Mapped[str] = mapped_column(String(16), default="string")
+    description: Mapped[str | None] = mapped_column(String(255))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utc_now, onupdate=utc_now
+    )
+
+
+class BlockedIP(Base):
+    """Persistent record of an analyst blocking a source IP.
+
+    Unblocking flips ``is_active`` rather than deleting, so the audit trail of
+    who blocked what, and when, survives.
+    """
+
+    __tablename__ = "blocked_ips"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45), unique=True, index=True)
+    blocked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    blocked_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    reason: Mapped[str | None] = mapped_column(String(255))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    unblocked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    blocker: Mapped["User | None"] = relationship()
+
+
+class GeoLocation(Base):
+    """Cached IP geolocation, filled lazily the first time an IP is displayed.
+
+    Deliberately separate from ThreatIntel: the detector treats every
+    ``ThreatIntel`` row with ``indicator_type == "ip"`` as blacklisted, so
+    caching benign IPs there would raise false Malicious IP alerts.
+    """
+
+    __tablename__ = "geo_locations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45), unique=True, index=True)
+    country: Mapped[str | None] = mapped_column(String(64))
+    country_code: Mapped[str | None] = mapped_column(String(2))
+    region: Mapped[str | None] = mapped_column(String(64))
+    city: Mapped[str | None] = mapped_column(String(64))
+    isp: Mapped[str | None] = mapped_column(String(128))
+    lat: Mapped[float | None] = mapped_column(Float)
+    lon: Mapped[float | None] = mapped_column(Float)
+    looked_up_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class AbuseCheck(Base):
+    """Cached AbuseIPDB reputation for one IP.
+
+    Separate from GeoLocation and ThreatIntel: abuse scores change over time
+    (so rows expire), and ThreatIntel drives the detector's blocklist -- a
+    cached lookup must never leak into it.
+    """
+
+    __tablename__ = "abuse_checks"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ip: Mapped[str] = mapped_column(String(45), unique=True, index=True)
+    abuse_confidence_score: Mapped[int] = mapped_column(Integer, default=0)
+    total_reports: Mapped[int] = mapped_column(Integer, default=0)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class ThreatIntel(Base):

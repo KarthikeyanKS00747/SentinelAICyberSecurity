@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Correlation – SentinelAI{% endblock %}
+{% block page_title %}Attack Correlation{% endblock %}
+{% block page_subtitle %}Source IPs showing multi-stage activity across different attack types{% endblock %}
+
+{% block content %}
+
+<div class="glass-card rounded-xl p-4 mb-6 flex items-start gap-3">
+  <div class="w-9 h-9 rounded-lg bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+    <i class="fa-solid fa-diagram-project text-amber-400"></i>
+  </div>
+  <div class="flex-1">
+    <h2 class="text-sm font-semibold text-white">Multi-stage activity</h2>
+    <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">
+      Only IPs that triggered <strong class="text-slate-300">two or more different</strong> attack types
+      appear here. The score weights distinct attack types far above repetition, so an IP that both
+      port-scanned and brute-forced ranks above one that brute-forced repeatedly.
+      Scores are computed from current alerts, not stored. Chain order and the
+      times below come from the parsed log activity, not from when each alert
+      row was written.
+    </p>
+  </div>
+  <span class="text-xs text-slate-500 font-mono whitespace-nowrap self-center">
+    {{ results | length }} correlated IP{% if results | length != 1 %}s{% endif %}
+  </span>
+</div>
+
+<div class="glass-card rounded-xl overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-blue-900/40 bg-sentinel-900/60">
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Source IP</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Score</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Attack Chain</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Types</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Alerts</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3"
+              title="When the earliest correlated activity happened in the log, not when the alert was written.">First Seen</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3"
+              title="When the latest correlated activity happened in the log, not when the alert was written.">Last Seen</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-blue-900/20">
+        {% for item in results %}
+        <tr class="alert-row">
+          <td class="px-4 py-3 font-mono text-xs text-cyan-300">{{ item.source_ip }}</td>
+          <td class="px-4 py-3">
+            <div class="flex items-center gap-2">
+              <div class="w-16 h-1.5 bg-sentinel-800 rounded-full overflow-hidden">
+                <div class="h-full rounded-full
+                  {% if item.band == 'high' %}bg-red-500{% elif item.band == 'medium' %}bg-amber-500{% else %}bg-blue-500{% endif %}"
+                  style="width: {{ item.score }}%"></div>
+              </div>
+              <span class="font-bold text-xs
+                {% if item.band == 'high' %}text-red-400{% elif item.band == 'medium' %}text-amber-400{% else %}text-blue-400{% endif %}">
+                {{ item.score }}
+              </span>
+            </div>
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-300 font-medium whitespace-nowrap"
+              title="MITRE ATT&amp;CK technique IDs shown alongside each stage.">{{ item.chain_text_with_techniques }}</td>
+          <td class="px-4 py-3 text-xs text-slate-400">{{ item.distinct_types }}</td>
+          <td class="px-4 py-3 text-xs text-slate-400">{{ item.total_alerts }}</td>
+          <td class="px-4 py-3 text-xs text-slate-500 font-mono whitespace-nowrap">
+            {{ item.first_seen.strftime('%Y-%m-%d %H:%M') if item.first_seen else '—' }}
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-500 font-mono whitespace-nowrap">
+            {{ item.last_seen.strftime('%Y-%m-%d %H:%M') if item.last_seen else '—' }}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="7" class="text-center py-16 text-slate-500">
+            <i class="fa-solid fa-diagram-project text-4xl opacity-15 mb-3 block"></i>
+            <p class="text-sm font-medium text-slate-400">No correlated activity</p>
+            <p class="text-xs mt-1">No source IP has triggered more than one attack type yet.</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

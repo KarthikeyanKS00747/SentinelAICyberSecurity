@@ -9,6 +9,9 @@
   <td class="px-4 py-3">
     <div class="font-semibold text-white">{{ alert.threat_name }}</div>
     <div class="text-xs text-slate-500 mt-0.5 max-w-xs truncate">{{ alert.description[:80] }}{% if alert.description | length > 80 %}…{% endif %}</div>
+    <span hx-get="/api/alerts/{{ alert.id }}/mitre"
+          hx-trigger="load"
+          hx-swap="innerHTML"></span>
   </td>
 
   <!-- Severity Badge -->
@@ -37,7 +40,25 @@
   </td>
 
   <!-- Source IP -->
-  <td class="px-4 py-3 font-mono text-xs text-slate-300">{{ alert.source_ip or '—' }}</td>
+  <td class="px-4 py-3 font-mono text-xs text-slate-300">
+          {{ alert.source_ip or '—' }}
+          {% if alert.source_ip %}
+          <span class="block mt-1"
+                hx-get="/api/geo/{{ alert.source_ip.split(',')[0].strip() }}"
+                hx-trigger="load"
+                hx-swap="innerHTML">
+            <span class="text-[10px] text-slate-600">locating&hellip;</span>
+          </span>
+          <span class="block mt-0.5"
+                hx-get="/api/abuse/{{ alert.source_ip.split(',')[0].strip() }}"
+                hx-trigger="load"
+                hx-swap="innerHTML"></span>
+                <span id="blocked-badge-{{ alert.id }}"></span>
+                <span hx-get="/api/correlation/{{ alert.source_ip.split(',')[0].strip() }}"
+                      hx-trigger="load"
+                      hx-swap="innerHTML"></span>
+          {% endif %}
+        </td>
 
   <!-- Risk Score -->
   <td class="px-4 py-3">
@@ -104,6 +125,11 @@
         <i class="fa-solid fa-circle-notch fa-spin text-xs"></i>
       </span>
     </button>
+
+    <span id="block-cell-{{ alert.id }}"
+          hx-get="/api/alerts/{{ alert.id }}/block-button"
+          hx-trigger="load"
+          hx-swap="innerHTML"></span>
   </td>
 </tr>
 

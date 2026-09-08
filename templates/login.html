@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>Sign in – SentinelAI</title>
+
+  <!-- Tailwind CSS CDN (v3 Play CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            sentinel: {
+              950: '#050b18',
+              900: '#0a1628',
+              800: '#0f2040',
+              700: '#132a54',
+              600: '#1a3a6e',
+              accent: '#3b82f6',
+              cyan:   '#06b6d4',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          boxShadow: { glow: '0 0 20px rgba(59,130,246,0.25)' }
+        }
+      }
+    }
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" integrity="sha512-DTOQO9RWCH3ppGqcWaEA1BIZOC6xxalwEsw9c2QQeAIftl+Vegovlnee1c9QX4TctnWMn13TZye+giMm8e2LwA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <style>
+    body { background-color: #050b18; }
+    .glass-card {
+      background: rgba(15,32,64,0.6);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(59,130,246,0.15);
+    }
+    .login-grid {
+      background-image:
+        linear-gradient(rgba(59,130,246,0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,0.05) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+  </style>
+</head>
+
+<body class="font-sans text-slate-200 min-h-screen flex items-center justify-center login-grid p-6">
+
+  <main class="w-full max-w-sm">
+
+    <!-- Brand -->
+    <div class="flex flex-col items-center mb-7">
+      <div class="flex items-center justify-center w-14 h-14 rounded-2xl
+                  bg-gradient-to-br from-blue-500 to-cyan-500 shadow-glow mb-4">
+        <i class="fa-solid fa-shield-halved text-white text-2xl"></i>
+      </div>
+      <h1 class="text-2xl font-bold tracking-wide">
+        <span class="text-white">Sentinel</span><span class="text-blue-400">AI</span>
+      </h1>
+      <p class="text-slate-500 text-xs font-medium mt-1">SIEM Platform &middot; Sign in to continue</p>
+    </div>
+
+    <!-- Login card -->
+    <div class="glass-card rounded-xl p-6">
+
+      {% if error %}
+      <div role="alert" class="mb-4 flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
+        <i class="fa-solid fa-circle-exclamation text-red-400 text-sm mt-0.5"></i>
+        <p class="text-xs text-red-300 leading-relaxed">{{ error }}</p>
+      </div>
+      {% endif %}
+
+      <form method="post" action="/login" autocomplete="on">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+        {% if next_url %}<input type="hidden" name="next" value="{{ next_url }}" />{% endif %}
+
+        <label for="username" class="block text-xs font-semibold uppercase tracking-widest text-slate-400 mb-1.5">
+          Username
+        </label>
+        <div class="relative mb-4">
+          <i class="fa-solid fa-user absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 text-xs"></i>
+          <input id="username" name="username" type="text" required autofocus
+                 autocomplete="username" maxlength="64"
+                 class="w-full bg-sentinel-800/60 border border-blue-900/30 rounded-lg pl-9 pr-3 py-2.5 text-sm
+                        text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1
+                        focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                 placeholder="analyst" />
+        </div>
+
+        <label for="password" class="block text-xs font-semibold uppercase tracking-widest text-slate-400 mb-1.5">
+          Password
+        </label>
+        <div class="relative mb-5">
+          <i class="fa-solid fa-lock absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 text-xs"></i>
+          <input id="password" name="password" type="password" required
+                 autocomplete="current-password"
+                 class="w-full bg-sentinel-800/60 border border-blue-900/30 rounded-lg pl-9 pr-3 py-2.5 text-sm
+                        text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1
+                        focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                 placeholder="••••••••" />
+        </div>
+
+        <button type="submit"
+                class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg
+                       bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500
+                       text-white font-semibold text-sm transition-all duration-200 shadow-glow">
+          <i class="fa-solid fa-right-to-bracket"></i>
+          Sign in
+        </button>
+      </form>
+    </div>
+
+    <p class="text-center text-[11px] text-slate-600 mt-5 leading-relaxed">
+      Accounts are provisioned locally with
+      <code class="text-cyan-400/80">python -m utils.seed_admin</code>.<br />
+      SentinelAI &mdash; Lightweight SIEM &bull; Academic Prototype
+    </p>
+  </main>
+
+</body>
+</html>

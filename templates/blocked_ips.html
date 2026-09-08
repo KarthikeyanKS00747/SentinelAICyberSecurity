@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}Blocked IPs – SentinelAI{% endblock %}
+{% block page_title %}Blocked IPs{% endblock %}
+{% block page_subtitle %}Audit trail of every manual block applied by an analyst{% endblock %}
+
+{% block content %}
+
+<div class="glass-card rounded-xl p-4 mb-6 flex items-start gap-3">
+  <div class="w-9 h-9 rounded-lg bg-red-500/15 flex items-center justify-center flex-shrink-0">
+    <i class="fa-solid fa-ban text-red-400"></i>
+  </div>
+  <div class="flex-1">
+    <h2 class="text-sm font-semibold text-white">Manual response log</h2>
+    <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">
+      Blocks are applied by an analyst from the Alerts page &mdash; nothing here is automatic.
+      Unblocking deactivates a record rather than deleting it, so the history stays intact.
+      SentinelAI records the decision; it does not push rules to a firewall.
+    </p>
+  </div>
+  <span class="text-xs text-slate-500 font-mono whitespace-nowrap self-center">
+    {{ active_count }} active / {{ blocks | length }} total
+  </span>
+</div>
+
+<div class="glass-card rounded-xl overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="border-b border-blue-900/40 bg-sentinel-900/60">
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">IP Address</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Status</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Reason</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Blocked By</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Blocked At</th>
+          <th class="text-left text-xs font-semibold uppercase tracking-wider text-slate-500 px-4 py-3">Unblocked At</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-blue-900/20">
+        {% for block in blocks %}
+        <tr class="alert-row">
+          <td class="px-4 py-3 font-mono text-xs text-cyan-300">{{ block.ip }}</td>
+          <td class="px-4 py-3">
+            {% if block.is_active %}
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold
+                         bg-red-500/15 text-red-400 border border-red-500/40">
+              <i class="fa-solid fa-ban text-[9px]"></i>BLOCKED
+            </span>
+            {% else %}
+            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium
+                         bg-slate-500/15 text-slate-400 border border-slate-500/30">
+              <i class="fa-solid fa-lock-open text-[9px]"></i>Lifted
+            </span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-400">{{ block.reason or '—' }}</td>
+          <td class="px-4 py-3 text-xs text-slate-300">
+            {{ usernames.get(block.blocked_by, 'unknown') if block.blocked_by else '—' }}
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-400 font-mono whitespace-nowrap">
+            {{ block.blocked_at.strftime('%Y-%m-%d %H:%M') if block.blocked_at else '—' }}
+          </td>
+          <td class="px-4 py-3 text-xs text-slate-500 font-mono whitespace-nowrap">
+            {{ block.unblocked_at.strftime('%Y-%m-%d %H:%M') if block.unblocked_at else '—' }}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="text-center py-16 text-slate-500">
+            <i class="fa-solid fa-ban text-4xl opacity-15 mb-3 block"></i>
+            <p class="text-sm font-medium text-slate-400">No IPs have been blocked</p>
+            <p class="text-xs mt-1">Use the Block IP button on an alert to add one.</p>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

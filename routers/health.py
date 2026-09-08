@@ -3,9 +3,11 @@
 import logging
 
 import httpx
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from config import settings
+from models import User
+from routers.auth import get_current_user
 
 router = APIRouter(tags=["Health"])
 logger = logging.getLogger(__name__)
@@ -19,7 +21,7 @@ async def health_check() -> dict[str, str]:
 
 
 @router.post("/api/test-ollama")
-async def test_ollama() -> dict[str, str]:
+async def test_ollama(current_user: User = Depends(get_current_user)) -> dict[str, str]:
     """Confirm the configured local Ollama model can generate a response."""
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
